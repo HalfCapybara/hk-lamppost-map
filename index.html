@@ -22,7 +22,7 @@
         #sidebar { width: 350px; background: #1f2937; padding: 20px; display: flex; flex-direction: column; gap: 20px; overflow-y: auto; z-index: 1000; box-shadow: 2px 0 10px rgba(0,0,0,0.5); }
         #map { flex-grow: 1; height: 100%; background: #000; z-index: 1; }
         .indicator { background: #374151; padding: 15px; border-radius: 8px; text-align: center; transition: all 0.2s ease-in-out; }
-        .indicator:hover { transform: translateY(-2px); box-shadow: 0 4px 6px rgba(0,0,0,0.3); }
+        .indicator:hover { transform: translateY(-2px); box-shadow: 0 4px 6px rgba(0,0,0,0.3); cursor: pointer; }
         .indicator-value { font-size: 1.5rem; font-weight: bold; }
         .indicator-label { font-size: 0.75rem; color: #d1d5db; text-transform: uppercase; margin-top: 5px; font-weight: 600; line-height: 1.2; }
         .leaflet-popup-content { color: #111827; } 
@@ -73,8 +73,12 @@
     </div>
 
     <script>
-        // 1. Initialize Map
-        const map = L.map('map', { maxZoom: 24, zoomControl: false }).setView([22.3193, 114.1694], 11);
+        // 1. Initialize Map WITH CANVAS RENDERER
+        const map = L.map('map', { 
+            maxZoom: 24, 
+            zoomControl: false,
+            preferCanvas: true 
+        }).setView([22.3193, 114.1694], 11);
         L.control.zoom({ position: 'topright' }).addTo(map);
 
         L.tileLayer('https://mapapi.geodata.gov.hk/gs/api/v1.0.0/xyz/basemap/wgs84/{z}/{x}/{y}.png', { maxNativeZoom: 19, maxZoom: 24, attribution: '&copy; Lands Department' }).addTo(map);
@@ -88,25 +92,33 @@
         let currentTextSearch = '';
         let currentBatchSearch = [];
         let currentClassFilter = null;
+        
+        // Marker Cache Memory
+        const markerCache = new Map();
 
         // Helper to format long class names
         function formatClassName(cls) {
             if (cls === 'ON_CENTRAL_DIVIDER_HIGH') return 'CENTRAL DIVIDER (HIGH)';
             if (cls === 'ON_CENTRAL_DIVIDER_MEDIUM') return 'CENTRAL DIVIDER (MED)';
+            if (cls === 'ON_BRIDGE') return 'ON BRIDGE (天橋)'; // 新增天橋類別
             return cls;
         }
 
-        // 2. Fetch CSV
-        fetch('hk_lamppost_145k_classified.csv')
+        // 2. Fetch CSV (讀取你更新後的檔案)
+        fetch('hk_lamppost_145k_classified_updated.csv')
             .then(res => { if (!res.ok) throw new Error(); return res.text(); })
             .then(csvText => {
-                document.getElementById('status').innerText = "Parsing data...";
+                document.getElementById('status').innerText = "Parsing data & building cache...";
                 document.getElementById('status').classList.replace('text-yellow-400', 'text-blue-400');
                 
                 Papa.parse(csvText, {
                     header: true, dynamicTyping: true, skipEmptyLines: true,
                     complete: function(results) {
-                        globalData = results.data.filter(row => row.lat && row.lon);
+                        globalData = results.data.filter(row => row.lat && row.lon).map((row, index) => {
+                            row._uid = index;
+                            return row;
+                        });
+                        
                         document.getElementById('status').style.display = 'none';
                         document.getElementById('searchInput').disabled = false;
                         document.getElementById('batchInput').disabled = false;
@@ -146,13 +158,17 @@
             const indicatorsContainer = document.getElementById('indicators');
             indicatorsContainer.innerHTML = sortedClasses.map(([cls, count]) => {
                 const isSelected = currentClassFilter === cls;
+                
+                // 顏色邏輯判定
                 const isDivider = cls.includes('CENTRAL_DIVIDER');
-                const baseColor = isDivider ? 'red' : 'blue';
-                const textClass = isDivider ? 'text-red-400' : 'text-blue-400';
+                const isBridge = cls === 'ON_BRIDGE';
+                
+                const baseColor = isDivider ? 'red' : (isBridge ? 'purple' : 'blue');
+                const textClass = isDivider ? 'text-red-400' : (isBridge ? 'text-purple-400' : 'text-blue-400');
                 const borderClass = isSelected ? `border-2 border-${baseColor}-400 bg-${baseColor}-900/30` : `border border-gray-600 cursor-pointer hover:border-gray-400`;
 
                 return `
-                    <div class="indicator ${borderClass} cursor-pointer" onclick="window.toggleClassFilter('${cls}')">
+                    <div class="indicator ${borderClass}" onclick="window.toggleClassFilter('${cls}')">
                         <div class="indicator-value ${textClass}">${count.toLocaleString()}</div>
                         <div class="indicator-label">${formatClassName(cls)}</div>
                     </div>
@@ -169,21 +185,30 @@
             const newMarkers = [];
 
             mapData.forEach(row => {
-                const lampClass = row.class || 'UNKNOWN';
-                const isDivider = lampClass.includes('CENTRAL_DIVIDER');
-                const markerColor = isDivider ? '#ef4444' : '#2563eb';
-                const fillColor = isDivider ? '#f87171' : '#3b82f6';
+                let marker = markerCache.get(row._uid);
+                
+                if (!marker) {
+                    const lampClass = row.class || 'UNKNOWN';
+                    
+                    // 地圖圓點顏色設定
+                    const isDivider = lampClass.includes('CENTRAL_DIVIDER');
+                    const isBridge = lampClass === 'ON_BRIDGE';
+                    
+                    const markerColor = isDivider ? '#ef4444' : (isBridge ? '#a855f7' : '#2563eb');
+                    const fillColor = isDivider ? '#f87171' : (isBridge ? '#c084fc' : '#3b82f6');
 
-                const marker = L.circleMarker([row.lat, row.lon], {
-                    radius: 5, color: markerColor, fillColor: fillColor, fillOpacity: 0.9, weight: 1
-                }).bindPopup(`
-                    <div style="font-family: sans-serif;">
-                        <strong>ID:</strong> ${row.lamp_post_id}<br>
-                        <strong>Street:</strong> ${row.street || 'N/A'}<br>
-                        <strong>District:</strong> ${row.district || 'N/A'}<br>
-                        <strong>Class:</strong> <span style="color:${isDivider ? 'red' : 'blue'}; font-weight:bold;">${formatClassName(lampClass)}</span>
-                    </div>
-                `);
+                    marker = L.circleMarker([row.lat, row.lon], {
+                        radius: 5, color: markerColor, fillColor: fillColor, fillOpacity: 0.9, weight: 1
+                    }).bindPopup(`
+                        <div style="font-family: sans-serif;">
+                            <strong>ID:</strong> ${row.lamp_post_id}<br>
+                            <strong>Street:</strong> ${row.street || 'N/A'}<br>
+                            <strong>District:</strong> ${row.district || 'N/A'}<br>
+                            <strong>Class:</strong> <span style="color:${isDivider ? 'red' : (isBridge ? 'purple' : 'blue')}; font-weight:bold;">${formatClassName(lampClass)}</span>
+                        </div>
+                    `);
+                    markerCache.set(row._uid, marker);
+                }
                 
                 newMarkers.push(marker);
                 bounds.extend([row.lat, row.lon]);
@@ -191,7 +216,7 @@
 
             markers.addLayers(newMarkers);
 
-            if (mapData.length > 0) {
+            if (mapData.length > 0 && (currentTextSearch || currentBatchSearch.length > 0 || currentClassFilter)) {
                 map.flyToBounds(bounds, { padding: [50, 50], maxZoom: 18, duration: 1.5 });
             }
         }
