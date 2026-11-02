@@ -9,7 +9,7 @@
     <!-- Leaflet CSS & JS for Mapping -->
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
     <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
-    <!-- Leaflet MarkerCluster CSS & JS for handling 145k points -->
+    <!-- Leaflet MarkerCluster CSS & JS -->
     <link rel="stylesheet" href="https://unpkg.com/leaflet.markercluster@1.4.1/dist/MarkerCluster.css" />
     <link rel="stylesheet" href="https://unpkg.com/leaflet.markercluster@1.4.1/dist/MarkerCluster.Default.css" />
     <script src="https://unpkg.com/leaflet.markercluster@1.4.1/dist/leaflet.markercluster.js"></script>
@@ -27,7 +27,6 @@
         .indicator-label { font-size: 0.75rem; color: #d1d5db; text-transform: uppercase; margin-top: 5px; font-weight: 600; line-height: 1.2; }
         .leaflet-popup-content { color: #111827; }
         
-        /* Custom scrollbar for the list */
         #lamppostList::-webkit-scrollbar { width: 6px; }
         #lamppostList::-webkit-scrollbar-track { background: #1f2937; }
         #lamppostList::-webkit-scrollbar-thumb { background: #4b5563; border-radius: 3px; }
@@ -39,8 +38,8 @@
             <h1 class="text-xl font-bold border-b border-gray-600 pb-2">HK Lamppost Map</h1>
             
             <!-- Status Indicator -->
-            <div id="status" class="text-sm text-yellow-400 font-semibold animate-pulse">
-                Downloading dataset... please wait.
+            <div id="status" class="text-sm text-yellow-400 font-semibold animate-pulse bg-gray-800 p-3 rounded border border-yellow-600">
+                Downloading & parsing 145,000 records... (Background Task)
             </div>
             
             <!-- Single Search Bar -->
@@ -68,9 +67,7 @@
             <!-- Indicators Grid -->
             <div>
                 <h2 class="text-sm font-semibold text-gray-400 uppercase tracking-wider mb-1">Class Summary (Click to Filter)</h2>
-                <div class="grid grid-cols-2 gap-3 mt-2" id="indicators">
-                    <!-- Indicators injected here by JS -->
-                </div>
+                <div class="grid grid-cols-2 gap-3 mt-2" id="indicators"></div>
             </div>
 
             <!-- Embedded List Section -->
@@ -81,9 +78,7 @@
                         Copy All IDs
                     </button>
                 </div>
-                <div id="lamppostList" class="bg-gray-800 rounded p-2 overflow-y-auto text-sm border border-gray-700" style="max-height: 250px;">
-                    <!-- List items injected here -->
-                </div>
+                <div id="lamppostList" class="bg-gray-800 rounded p-2 overflow-y-auto text-sm border border-gray-700" style="max-height: 250px;"></div>
             </div>
 
         </div>
@@ -92,8 +87,12 @@
     </div>
 
     <script>
-        // 1. Initialize Map
-        const map = L.map('map', { maxZoom: 24, zoomControl: false }).setView([22.3193, 114.1694], 11);
+        // 1. Initialize Map with Canvas Renderer for extreme performance
+        const map = L.map('map', { 
+            maxZoom: 24, 
+            zoomControl: false,
+            preferCanvas: true // CRITICAL for rendering 145k points without freezing
+        }).setView([22.3193, 114.1694], 11);
         L.control.zoom({ position: 'topright' }).addTo(map);
 
         L.tileLayer('https://mapapi.geodata.gov.hk/gs/api/v1.0.0/xyz/basemap/wgs84/{z}/{x}/{y}.png', { maxNativeZoom: 19, maxZoom: 24, attribution: '&copy; Lands Department' }).addTo(map);
@@ -102,6 +101,35 @@
         const markers = L.markerClusterGroup({ chunkedLoading: true, maxClusterRadius: 60, disableClusteringAtZoom: 18 });
         map.addLayer(markers);
 
-        // Global State Variables
         let globalData = [];
         let currentTextSearch = '';
+        let currentBatchSearch = [];
+        let currentClassFilter = null;
+        let currentMapData = [];
+
+        function formatClassName(cls) {
+            if (cls === 'ON_CENTRAL_DIVIDER_HIGH') return 'CENTRAL DIVIDER (HIGH)';
+            if (cls === 'ON_CENTRAL_DIVIDER_MEDIUM') return 'CENTRAL DIVIDER (MED)';
+            return cls;
+        }
+
+        // 2. Fetch CSV using Web Workers
+        Papa.parse('hk_lamppost_145k_classified.csv', {
+            download: true, // Streams directly
+            header: true, 
+            dynamicTyping: true, 
+            skipEmptyLines: true,
+            worker: true, // CRITICAL: Parses in background, keeps browser un-frozen
+            complete: function(results) {
+                const statusDiv = document.getElementById('status');
+                statusDiv.classList.replace('text-yellow-400', 'text-blue-400');
+                statusDiv.innerText = "Rendering map points...";
+
+                globalData = results.data.filter(row => row.lat && row.lon);
+                
+                document.getElementById('searchInput').disabled = false;
+                document.getElementById('batchInput').disabled = false;
+                document.getElementById('batchSearchBtn').disabled = false;
+                
+                // Allow UI to update before locking up to render markers
+                setTimeout(() => {
