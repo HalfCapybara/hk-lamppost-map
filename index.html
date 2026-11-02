@@ -91,7 +91,7 @@
         const map = L.map('map', { 
             maxZoom: 24, 
             zoomControl: false,
-            preferCanvas: true // CRITICAL for rendering 145k points without freezing
+            preferCanvas: true // CRITICAL: Hardware acceleration for thousands of points
         }).setView([22.3193, 114.1694], 11);
         L.control.zoom({ position: 'topright' }).addTo(map);
 
@@ -106,6 +106,9 @@
         let currentBatchSearch = [];
         let currentClassFilter = null;
         let currentMapData = [];
+        
+        // CRITICAL OPTIMIZATION: Cache to store pre-built map markers
+        const markerCache = new Map();
 
         function formatClassName(cls) {
             if (cls === 'ON_CENTRAL_DIVIDER_HIGH') return 'CENTRAL DIVIDER (HIGH)';
@@ -115,21 +118,204 @@
 
         // 2. Fetch CSV using Web Workers
         Papa.parse('hk_lamppost_145k_classified.csv', {
-            download: true, // Streams directly
+            download: true,
             header: true, 
             dynamicTyping: true, 
             skipEmptyLines: true,
-            worker: true, // CRITICAL: Parses in background, keeps browser un-frozen
+            worker: true,
             complete: function(results) {
                 const statusDiv = document.getElementById('status');
                 statusDiv.classList.replace('text-yellow-400', 'text-blue-400');
-                statusDiv.innerText = "Rendering map points...";
+                statusDiv.innerText = "Building internal map cache... (One-time setup)";
 
-                globalData = results.data.filter(row => row.lat && row.lon);
+                // Add a unique internal ID to each row for caching
+                globalData = results.data.filter(row => row.lat && row.lon).map((row, index) => {
+                    row._uid = index;
+                    return row;
+                });
                 
                 document.getElementById('searchInput').disabled = false;
                 document.getElementById('batchInput').disabled = false;
                 document.getElementById('batchSearchBtn').disabled = false;
                 
-                // Allow UI to update before locking up to render markers
                 setTimeout(() => {
+                    updateDashboard();
+                    statusDiv.style.display = 'none';
+                }, 100);
+            },
+            error: function() {
+                const statusDiv = document.getElementById('status');
+                statusDiv.classList.replace('text-yellow-400', 'text-red-500');
+                statusDiv.classList.remove('animate-pulse');
+                statusDiv.innerHTML = `<strong>Error:</strong> Could not load CSV. Check file name and server.`;
+            }
+        });
+
+        // 3. Central Update Function
+        function updateDashboard() {
+            let baseData = globalData;
+            
+            // Text Search
+            if (currentTextSearch) {
+                baseData = baseData.filter(row => {
+                    const idStr = String(row.lamp_post_id || '').toLowerCase();
+                    const streetStr = String(row.street || '').toLowerCase();
+                    const districtStr = String(row.district || '').toLowerCase();
+                    return idStr.includes(currentTextSearch) || streetStr.includes(currentTextSearch) || districtStr.includes(currentTextSearch);
+                });
+            }
+            
+            // Batch Search
+            if (currentBatchSearch.length > 0) {
+                baseData = baseData.filter(row => currentBatchSearch.includes(String(row.lamp_post_id || '').toLowerCase()));
+            }
+
+            // Calculate Indicators
+            const classCounts = {};
+            baseData.forEach(row => {
+                const lampClass = row.class || 'UNKNOWN';
+                classCounts[lampClass] = (classCounts[lampClass] || 0) + 1;
+            });
+            const sortedClasses = Object.entries(classCounts).sort((a, b) => b[1] - a[1]).slice(0, 4);
+
+            const indicatorsContainer = document.getElementById('indicators');
+            indicatorsContainer.innerHTML = sortedClasses.map(([cls, count]) => {
+                const isSelected = currentClassFilter === cls;
+                const isDivider = cls.includes('CENTRAL_DIVIDER');
+                const baseColor = isDivider ? 'red' : 'blue';
+                const textClass = isDivider ? 'text-red-400' : 'text-blue-400';
+                const borderClass = isSelected ? `border-2 border-${baseColor}-400 bg-${baseColor}-900/30` : `border border-gray-600 cursor-pointer hover:border-gray-400`;
+
+                return `
+                    <div class="indicator ${borderClass} cursor-pointer" onclick="window.toggleClassFilter('${cls}')">
+                        <div class="indicator-value ${textClass}">${count.toLocaleString()}</div>
+                        <div class="indicator-label">${formatClassName(cls)}</div>
+                    </div>
+                `;
+            }).join('');
+
+            // Apply Class Filter
+            currentMapData = baseData;
+            if (currentClassFilter) {
+                currentMapData = currentMapData.filter(row => row.class === currentClassFilter);
+            }
+
+            // ⚡ SUPER FAST MARKER RENDERING ⚡
+            markers.clearLayers();
+            let bounds = L.latLngBounds();
+            const newMarkers = [];
+
+            currentMapData.forEach(row => {
+                // Check if marker already exists in memory
+                let marker = markerCache.get(row._uid);
+                
+                if (!marker) {
+                    // Create it ONLY if it doesn't exist yet
+                    const lampClass = row.class || 'UNKNOWN';
+                    const isDivider = lampClass.includes('CENTRAL_DIVIDER');
+                    const markerColor = isDivider ? '#ef4444' : '#2563eb';
+                    const fillColor = isDivider ? '#f87171' : '#3b82f6';
+
+                    marker = L.circleMarker([row.lat, row.lon], {
+                        radius: 5, color: markerColor, fillColor: fillColor, fillOpacity: 0.9, weight: 1
+                    }).bindPopup(`
+                        <div style="font-family: sans-serif;">
+                            <strong>ID:</strong> ${row.lamp_post_id}<br>
+                            <strong>Street:</strong> ${row.street || 'N/A'}<br>
+                            <strong>District:</strong> ${row.district || 'N/A'}<br>
+                            <strong>Class:</strong> <span style="color:${isDivider ? 'red' : 'blue'}; font-weight:bold;">${formatClassName(lampClass)}</span>
+                        </div>
+                    `);
+                    // Save to memory
+                    markerCache.set(row._uid, marker);
+                }
+                
+                newMarkers.push(marker);
+                bounds.extend([row.lat, row.lon]);
+            });
+
+            markers.addLayers(newMarkers);
+
+            if (currentMapData.length > 0 && (currentTextSearch || currentBatchSearch.length > 0 || currentClassFilter)) {
+                map.flyToBounds(bounds, { padding: [50, 50], maxZoom: 18, duration: 1.5 });
+            }
+
+            // Render Embedded List (Max 100 to prevent HTML freezing)
+            const listSection = document.getElementById('listSection');
+            const lamppostList = document.getElementById('lamppostList');
+            const listCount = document.getElementById('listCount');
+
+            if (currentClassFilter || currentTextSearch || currentBatchSearch.length > 0) {
+                listSection.classList.remove('hidden');
+                listSection.classList.add('flex');
+                
+                const displayLimit = 100;
+                const displayData = currentMapData.slice(0, displayLimit);
+                
+                if (currentMapData.length > displayLimit) {
+                    listCount.innerText = `(showing first ${displayLimit} of ${currentMapData.length})`;
+                } else {
+                    listCount.innerText = `(${currentMapData.length} total)`;
+                }
+
+                lamppostList.innerHTML = displayData.map(row => `
+                    <div class="border-b border-gray-700 py-1.5 last:border-0 flex justify-between">
+                        <span class="text-blue-400 font-bold">${row.lamp_post_id}</span>
+                        <span class="text-gray-400 truncate max-w-[180px]" title="${row.street || 'N/A'}">${row.street || 'N/A'}</span>
+                    </div>
+                `).join('');
+            } else {
+                listSection.classList.add('hidden');
+                listSection.classList.remove('flex');
+                lamppostList.innerHTML = '';
+            }
+        }
+
+        window.toggleClassFilter = function(cls) {
+            currentClassFilter = (currentClassFilter === cls) ? null : cls;
+            updateDashboard();
+        };
+
+        document.getElementById('copyListBtn').addEventListener('click', () => {
+            if (currentMapData.length === 0) return;
+            const allIds = currentMapData.map(row => row.lamp_post_id).join('\n');
+            navigator.clipboard.writeText(allIds).then(() => {
+                const btn = document.getElementById('copyListBtn');
+                const originalText = btn.innerText;
+                btn.innerText = 'Copied!';
+                btn.classList.replace('bg-gray-700', 'bg-green-600');
+                setTimeout(() => {
+                    btn.innerText = originalText;
+                    btn.classList.replace('bg-green-600', 'bg-gray-700');
+                }, 2000);
+            });
+        });
+
+        // Increased delay slightly so typing is smoother
+        let searchTimeout;
+        document.getElementById('searchInput').addEventListener('input', (e) => {
+            clearTimeout(searchTimeout);
+            searchTimeout = setTimeout(() => {
+                currentTextSearch = e.target.value.toLowerCase().trim();
+                updateDashboard();
+            }, 500); 
+        });
+
+        document.getElementById('batchSearchBtn').addEventListener('click', () => {
+            const input = document.getElementById('batchInput').value;
+            if (!input.trim()) return;
+            currentBatchSearch = input.split(/[\n,\s]+/).map(id => id.trim().toLowerCase()).filter(id => id.length > 0);
+            if (currentBatchSearch.length === 0) return;
+            document.getElementById('clearBatchBtn').classList.remove('hidden');
+            updateDashboard();
+        });
+
+        document.getElementById('clearBatchBtn').addEventListener('click', () => {
+            document.getElementById('batchInput').value = '';
+            document.getElementById('clearBatchBtn').classList.add('hidden');
+            currentBatchSearch = [];
+            updateDashboard();
+        });
+    </script>
+</body>
+</html>
