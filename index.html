@@ -27,7 +27,6 @@
         .indicator-label { font-size: 0.75rem; color: #d1d5db; text-transform: uppercase; margin-top: 5px; font-weight: 600; line-height: 1.2; }
         .leaflet-popup-content { color: #111827; } 
         
-        /* Custom style for the Street View button inside the Leaflet popup */
         .street-view-btn {
             display: block;
             margin-top: 10px;
@@ -114,7 +113,6 @@
         // Marker Cache Memory
         const markerCache = new Map();
 
-        // Helper to format long class names
         function formatClassName(cls) {
             if (cls === 'ON_CENTRAL_DIVIDER_HIGH') return 'CENTRAL DIVIDER (HIGH)';
             if (cls === 'ON_CENTRAL_DIVIDER_MEDIUM') return 'CENTRAL DIVIDER (MED)';
@@ -122,8 +120,8 @@
             return cls;
         }
 
-        // 2. Fetch CSV (讀取你更新後的檔案)
-        fetch('hk_lamppost_145k_classified_updated.csv')
+        // 2. Fetch the newly merged CSV
+        fetch('hk_lamppost_master.csv')
             .then(res => { if (!res.ok) throw new Error(); return res.text(); })
             .then(csvText => {
                 document.getElementById('status').innerText = "Parsing data & building cache...";
@@ -177,7 +175,6 @@
             indicatorsContainer.innerHTML = sortedClasses.map(([cls, count]) => {
                 const isSelected = currentClassFilter === cls;
                 
-                // 顏色邏輯判定
                 const isDivider = cls.includes('CENTRAL_DIVIDER');
                 const isBridge = cls === 'ON_BRIDGE';
                 
@@ -208,21 +205,23 @@
                 if (!marker) {
                     const lampClass = row.class || 'UNKNOWN';
                     
-                    // 地圖圓點顏色設定
                     const isDivider = lampClass.includes('CENTRAL_DIVIDER');
                     const isBridge = lampClass === 'ON_BRIDGE';
                     
                     const markerColor = isDivider ? '#ef4444' : (isBridge ? '#a855f7' : '#2563eb');
                     const fillColor = isDivider ? '#f87171' : (isBridge ? '#c084fc' : '#3b82f6');
                     
-                    // 動態產生 Google Street View 網址
                     const streetViewUrl = `https://www.google.com/maps/@?api=1&map_action=pano&viewpoint=${row.lat},${row.lon}`;
 
                     marker = L.circleMarker([row.lat, row.lon], {
                         radius: 5, color: markerColor, fillColor: fillColor, fillOpacity: 0.9, weight: 1
                     }).bindPopup(`
-                        <div style="font-family: sans-serif; min-width: 180px;">
+                        <div style="font-family: sans-serif; min-width: 220px;">
                             <strong>ID:</strong> ${row.lamp_post_id}<br>
+                            <strong>Region:</strong> ${row.Region || 'N/A'}<br>
+                            <strong>Exchange:</strong> ${row.EXCHCODE || 'N/A'}<br>
+                            <strong>Unit:</strong> ${row.Unit || 'N/A'}<br>
+                            <hr style="margin: 8px 0; border-top: 1px solid #ccc;">
                             <strong>Street:</strong> ${row.street || 'N/A'}<br>
                             <strong>District:</strong> ${row.district || 'N/A'}<br>
                             <strong>Class:</strong> <span style="color:${isDivider ? 'red' : (isBridge ? 'purple' : 'blue')}; font-weight:bold;">${formatClassName(lampClass)}</span>
@@ -247,13 +246,11 @@
             }
         }
 
-        // 4. Handle Indicator Click
         window.toggleClassFilter = function(cls) {
             currentClassFilter = (currentClassFilter === cls) ? null : cls;
             updateDashboard();
         };
 
-        // 5. Handle Single Search
         let searchTimeout;
         document.getElementById('searchInput').addEventListener('input', (e) => {
             clearTimeout(searchTimeout);
@@ -263,19 +260,15 @@
             }, 350); 
         });
 
-        // 6. Handle Batch ID Search
         document.getElementById('batchSearchBtn').addEventListener('click', () => {
             const input = document.getElementById('batchInput').value;
             if (!input.trim()) return;
-
             currentBatchSearch = input.split(/[\n,\s]+/).map(id => id.trim().toLowerCase()).filter(id => id.length > 0);
             if (currentBatchSearch.length === 0) return;
-
             document.getElementById('clearBatchBtn').classList.remove('hidden');
             updateDashboard();
         });
 
-        // 7. Clear Batch Search
         document.getElementById('clearBatchBtn').addEventListener('click', () => {
             document.getElementById('batchInput').value = '';
             document.getElementById('clearBatchBtn').classList.add('hidden');
