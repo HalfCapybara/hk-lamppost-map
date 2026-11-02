@@ -4,16 +4,16 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>HK Lamppost Dashboard</title>
-    <!-- Tailwind CSS for styling -->
+    <!-- Tailwind CSS -->
     <script src="https://cdn.tailwindcss.com"></script>
-    <!-- Leaflet CSS & JS for Mapping -->
+    <!-- Leaflet CSS & JS -->
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
     <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
-    <!-- Leaflet MarkerCluster CSS & JS -->
+    <!-- MarkerCluster CSS & JS -->
     <link rel="stylesheet" href="https://unpkg.com/leaflet.markercluster@1.4.1/dist/MarkerCluster.css" />
     <link rel="stylesheet" href="https://unpkg.com/leaflet.markercluster@1.4.1/dist/MarkerCluster.Default.css" />
     <script src="https://unpkg.com/leaflet.markercluster@1.4.1/dist/leaflet.markercluster.js"></script>
-    <!-- PapaParse for reading the CSV -->
+    <!-- PapaParse -->
     <script src="https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.4.1/papaparse.min.js"></script>
     
     <style>
@@ -22,7 +22,7 @@
         #sidebar { width: 350px; background: #1f2937; padding: 20px; display: flex; flex-direction: column; gap: 20px; overflow-y: auto; z-index: 1000; box-shadow: 2px 0 10px rgba(0,0,0,0.5); }
         #map { flex-grow: 1; height: 100%; background: #000; z-index: 1; }
         .indicator { background: #374151; padding: 15px; border-radius: 8px; text-align: center; transition: all 0.2s ease-in-out; }
-        .indicator:hover { transform: translateY(-2px); box-shadow: 0 4px 6px rgba(0,0,0,0.3); }
+        .indicator:hover { transform: translateY(-2px); box-shadow: 0 4px 6px rgba(0,0,0,0.3); cursor: pointer; }
         .indicator-value { font-size: 1.5rem; font-weight: bold; }
         .indicator-label { font-size: 0.75rem; color: #d1d5db; text-transform: uppercase; margin-top: 5px; font-weight: 600; line-height: 1.2; }
         .leaflet-popup-content { color: #111827; }
@@ -34,4 +34,48 @@
             <h1 class="text-xl font-bold border-b border-gray-600 pb-2">HK Lamppost Map</h1>
             
             <!-- Status Indicator -->
-            <div
+            <div id="status" class="text-sm text-yellow-400 font-semibold animate-pulse bg-gray-800 p-3 rounded border border-yellow-600">
+                Downloading & parsing dataset... please wait.
+            </div>
+            
+            <!-- Single Search Bar -->
+            <div>
+                <label class="block text-sm font-medium text-gray-400 mb-1">Search Database</label>
+                <input type="text" id="searchInput" placeholder="Type ID, Street, or District..." 
+                       class="w-full p-2 rounded bg-gray-700 border border-gray-600 text-white placeholder-gray-400 focus:outline-none focus:border-blue-500 transition-colors" disabled>
+            </div>
+
+            <!-- Batch ID Search Box -->
+            <div>
+                <label class="block text-sm font-medium text-gray-400 mb-1">Batch ID Check (Paste List)</label>
+                <textarea id="batchInput" rows="3" placeholder="Paste multiple IDs (from Excel, comma separated, or new lines)..." 
+                          class="w-full p-2 rounded bg-gray-700 border border-gray-600 text-white placeholder-gray-400 focus:outline-none focus:border-blue-500 transition-colors" disabled></textarea>
+                <div class="flex gap-2 mt-2">
+                    <button id="batchSearchBtn" class="flex-1 bg-blue-600 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded transition-colors disabled:opacity-50" disabled>
+                        Check IDs
+                    </button>
+                    <button id="clearBatchBtn" class="hidden flex-1 bg-gray-600 hover:bg-gray-700 text-white font-bold py-2 px-4 rounded transition-colors">
+                        Clear
+                    </button>
+                </div>
+            </div>
+            
+            <!-- Indicators Grid -->
+            <div>
+                <h2 class="text-sm font-semibold text-gray-400 uppercase tracking-wider mb-1">Class Summary (Click to Filter)</h2>
+                <div class="grid grid-cols-2 gap-3 mt-2" id="indicators"></div>
+            </div>
+        </div>
+        
+        <div id="map"></div>
+    </div>
+
+    <script>
+        // 1. Initialize Map with Canvas Renderer (Hardware Acceleration)
+        const map = L.map('map', { 
+            maxZoom: 24, 
+            zoomControl: false,
+            preferCanvas: true 
+        }).setView([22.3193, 114.1694], 11);
+        
+        L.control.zoom({ position
