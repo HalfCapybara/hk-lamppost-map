@@ -24,7 +24,7 @@
         .indicator { background: #374151; padding: 15px; border-radius: 8px; text-align: center; border: 1px solid #4b5563; }
         .indicator-value { font-size: 1.5rem; font-weight: bold; color: #60a5fa; }
         .indicator-label { font-size: 0.8rem; color: #9ca3af; text-transform: uppercase; margin-top: 5px; }
-        .leaflet-popup-content { color: #111827; } /* Make popup text dark for readability */
+        .leaflet-popup-content { color: #111827; } 
     </style>
 </head>
 <body>
@@ -37,11 +37,26 @@
                 Downloading dataset... please wait.
             </div>
             
-            <!-- Search Bar -->
+            <!-- Single Search Bar -->
             <div>
                 <label class="block text-sm font-medium text-gray-400 mb-1">Search Database</label>
                 <input type="text" id="searchInput" placeholder="Type ID, Street, or District..." 
                        class="w-full p-2 rounded bg-gray-700 border border-gray-600 text-white placeholder-gray-400 focus:outline-none focus:border-blue-500 transition-colors" disabled>
+            </div>
+
+            <!-- Batch ID Search Box -->
+            <div>
+                <label class="block text-sm font-medium text-gray-400 mb-1">Batch ID Check (Paste List)</label>
+                <textarea id="batchInput" rows="3" placeholder="Paste multiple IDs (from Excel, comma separated, or new lines)..." 
+                          class="w-full p-2 rounded bg-gray-700 border border-gray-600 text-white placeholder-gray-400 focus:outline-none focus:border-blue-500 transition-colors" disabled></textarea>
+                <div class="flex gap-2 mt-2">
+                    <button id="batchSearchBtn" class="flex-1 bg-blue-600 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded transition-colors disabled:opacity-50" disabled>
+                        Check IDs
+                    </button>
+                    <button id="clearBatchBtn" class="hidden flex-1 bg-gray-600 hover:bg-gray-700 text-white font-bold py-2 px-4 rounded transition-colors">
+                        Clear
+                    </button>
+                </div>
             </div>
             
             <!-- Indicators Grid -->
@@ -59,11 +74,10 @@
     <script>
         // 1. Initialize the Map
         const map = L.map('map', {
-            maxZoom: 24, // Extreme zoom in capability
+            maxZoom: 24, 
             zoomControl: false 
         }).setView([22.3193, 114.1694], 11);
         
-        // Move zoom control to avoid overlapping with sidebar
         L.control.zoom({ position: 'topright' }).addTo(map);
 
         // 2. Add LandsD Basemap layer
@@ -83,7 +97,7 @@
         const markers = L.markerClusterGroup({
             chunkedLoading: true,
             maxClusterRadius: 60,
-            disableClusteringAtZoom: 18 // Break apart into individual points when zoomed in
+            disableClusteringAtZoom: 18 
         });
         map.addLayer(markers);
 
@@ -104,14 +118,13 @@
                     dynamicTyping: true,
                     skipEmptyLines: true,
                     complete: function(results) {
-                        // Filter out rows missing coordinates
                         globalData = results.data.filter(row => row.lat && row.lon);
                         
-                        // Update UI state
                         document.getElementById('status').style.display = 'none';
                         document.getElementById('searchInput').disabled = false;
+                        document.getElementById('batchInput').disabled = false;
+                        document.getElementById('batchSearchBtn').disabled = false;
                         
-                        // Initial render
                         renderDashboard(globalData);
                     }
                 });
@@ -121,7 +134,6 @@
                 statusDiv.classList.replace('text-yellow-400', 'text-red-500');
                 statusDiv.classList.remove('animate-pulse');
                 statusDiv.innerHTML = `<strong>Error:</strong> Could not load CSV. Ensure 'hk_lamppost_145k_classified.csv' is uploaded to your GitHub repository in the exact same folder as this HTML file.`;
-                console.error(err);
             });
 
         // 6. Main render function for map points and indicators
@@ -132,15 +144,18 @@
             const newMarkers = [];
 
             data.forEach(row => {
-                // Tally the classes (Column F)
                 const lampClass = row.class || 'UNKNOWN';
                 classCounts[lampClass] = (classCounts[lampClass] || 0) + 1;
 
-                // Build individual markers
+                // Color code Central Divider vs Roadside
+                const isDivider = lampClass.includes('CENTRAL_DIVIDER');
+                const markerColor = isDivider ? '#ef4444' : '#2563eb'; // Red for divider, Blue for normal
+                const fillColor = isDivider ? '#f87171' : '#3b82f6';
+
                 const marker = L.circleMarker([row.lat, row.lon], {
                     radius: 5,
-                    color: '#2563eb',
-                    fillColor: '#3b82f6',
+                    color: markerColor,
+                    fillColor: fillColor,
                     fillOpacity: 0.9,
                     weight: 1
                 }).bindPopup(`
@@ -148,7 +163,7 @@
                         <strong>ID:</strong> ${row.lamp_post_id}<br>
                         <strong>Street:</strong> ${row.street || 'N/A'}<br>
                         <strong>District:</strong> ${row.district || 'N/A'}<br>
-                        <strong>Class:</strong> ${lampClass}
+                        <strong>Class:</strong> <span style="color:${isDivider ? 'red' : 'blue'}; font-weight:bold;">${lampClass}</span>
                     </div>
                 `);
                 
@@ -156,15 +171,12 @@
                 bounds.extend([row.lat, row.lon]);
             });
 
-            // Add all newly created markers to the cluster group at once
             markers.addLayers(newMarkers);
 
-            // Auto-Zoom: Fit the map smoothly to the currently visible points
             if (data.length > 0) {
                 map.flyToBounds(bounds, { padding: [50, 50], maxZoom: 18, duration: 1.5 });
             }
 
-            // Update the 4 Indicators in the sidebar
             const sortedClasses = Object.entries(classCounts)
                 .sort((a, b) => b[1] - a[1])
                 .slice(0, 4);
@@ -172,13 +184,13 @@
             const indicatorsContainer = document.getElementById('indicators');
             indicatorsContainer.innerHTML = sortedClasses.map(([cls, count]) => `
                 <div class="indicator">
-                    <div class="indicator-value">${count.toLocaleString()}</div>
+                    <div class="indicator-value ${cls.includes('CENTRAL_DIVIDER') ? 'text-red-400' : 'text-blue-400'}">${count.toLocaleString()}</div>
                     <div class="indicator-label">${cls}</div>
                 </div>
             `).join('');
         }
 
-        // 7. Handle Search with Debouncing
+        // 7. Handle Single Search
         let searchTimeout;
         document.getElementById('searchInput').addEventListener('input', (e) => {
             clearTimeout(searchTimeout);
@@ -189,16 +201,42 @@
                     renderDashboard(globalData);
                     return;
                 }
-                
                 const filtered = globalData.filter(row => {
                     const idStr = String(row.lamp_post_id || '').toLowerCase();
                     const streetStr = String(row.street || '').toLowerCase();
                     const districtStr = String(row.district || '').toLowerCase();
                     return idStr.includes(query) || streetStr.includes(query) || districtStr.includes(query);
                 });
-                
                 renderDashboard(filtered);
             }, 350); 
+        });
+
+        // 8. Handle Batch ID Search
+        document.getElementById('batchSearchBtn').addEventListener('click', () => {
+            const input = document.getElementById('batchInput').value;
+            if (!input.trim()) return;
+
+            // Split input by newlines, commas, or spaces
+            const idsToSearch = input.split(/[\n,\s]+/)
+                                     .map(id => id.trim().toLowerCase())
+                                     .filter(id => id.length > 0);
+
+            if (idsToSearch.length === 0) return;
+
+            const filtered = globalData.filter(row => {
+                const idStr = String(row.lamp_post_id || '').toLowerCase();
+                return idsToSearch.includes(idStr);
+            });
+
+            renderDashboard(filtered);
+            document.getElementById('clearBatchBtn').classList.remove('hidden');
+        });
+
+        // 9. Clear Batch Search
+        document.getElementById('clearBatchBtn').addEventListener('click', () => {
+            document.getElementById('batchInput').value = '';
+            document.getElementById('clearBatchBtn').classList.add('hidden');
+            renderDashboard(globalData);
         });
     </script>
 </body>
