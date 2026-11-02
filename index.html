@@ -9,40 +9,36 @@
     <!-- Leaflet CSS & JS for Mapping -->
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
     <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
-    <!-- Leaflet MarkerCluster CSS & JS for handling 145k points -->
+    <!-- Leaflet MarkerCluster CSS & JS -->
     <link rel="stylesheet" href="https://unpkg.com/leaflet.markercluster@1.4.1/dist/MarkerCluster.css" />
     <link rel="stylesheet" href="https://unpkg.com/leaflet.markercluster@1.4.1/dist/MarkerCluster.Default.css" />
     <script src="https://unpkg.com/leaflet.markercluster@1.4.1/dist/leaflet.markercluster.js"></script>
-    <!-- PapaParse for reading the CSV -->
+    <!-- PapaParse for reading and exporting CSV -->
     <script src="https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.4.1/papaparse.min.js"></script>
     
     <style>
         html, body { margin: 0; padding: 0; height: 100%; background: #111827; color: white; font-family: sans-serif; }
-        #app { display: flex; height: 100vh; width: 100vw; }
-        #sidebar { width: 350px; background: #1f2937; padding: 20px; display: flex; flex-direction: column; gap: 20px; overflow-y: auto; z-index: 1000; box-shadow: 2px 0 10px rgba(0,0,0,0.5); }
+        #app { display: flex; height: 100vh; width: 100vw; overflow: hidden; }
+        
+        /* Custom scrollbar for sidebar */
+        #sidebar { width: 360px; background: #1f2937; padding: 20px; display: flex; flex-direction: column; gap: 15px; overflow-y: auto; z-index: 1000; box-shadow: 2px 0 10px rgba(0,0,0,0.5); }
+        #sidebar::-webkit-scrollbar { width: 6px; }
+        #sidebar::-webkit-scrollbar-track { background: #1f2937; }
+        #sidebar::-webkit-scrollbar-thumb { background: #4b5563; border-radius: 3px; }
+        
         #map { flex-grow: 1; height: 100%; background: #000; z-index: 1; }
-        .indicator { background: #374151; padding: 15px; border-radius: 8px; text-align: center; transition: all 0.2s ease-in-out; }
+        .indicator { background: #374151; padding: 12px; border-radius: 8px; text-align: center; transition: all 0.2s ease-in-out; }
         .indicator:hover { transform: translateY(-2px); box-shadow: 0 4px 6px rgba(0,0,0,0.3); cursor: pointer; }
-        .indicator-value { font-size: 1.5rem; font-weight: bold; }
-        .indicator-label { font-size: 0.75rem; color: #d1d5db; text-transform: uppercase; margin-top: 5px; font-weight: 600; line-height: 1.2; }
+        .indicator-value { font-size: 1.25rem; font-weight: bold; }
+        .indicator-label { font-size: 0.7rem; color: #d1d5db; text-transform: uppercase; margin-top: 5px; font-weight: 600; line-height: 1.2; }
         .leaflet-popup-content { color: #111827; } 
         
         .street-view-btn {
-            display: block;
-            margin-top: 10px;
-            text-align: center;
-            background-color: #2563eb;
-            color: white !important;
-            padding: 8px;
-            border-radius: 6px;
-            text-decoration: none;
-            font-size: 0.85rem;
-            font-weight: bold;
-            transition: background-color 0.2s;
+            display: block; margin-top: 10px; text-align: center; background-color: #2563eb;
+            color: white !important; padding: 8px; border-radius: 6px; text-decoration: none;
+            font-size: 0.85rem; font-weight: bold; transition: background-color 0.2s;
         }
-        .street-view-btn:hover {
-            background-color: #1d4ed8;
-        }
+        .street-view-btn:hover { background-color: #1d4ed8; }
     </style>
 </head>
 <body>
@@ -55,24 +51,40 @@
                 Downloading dataset... please wait.
             </div>
             
-            <!-- Single Search Bar -->
+            <!-- Text Search -->
             <div>
                 <label class="block text-sm font-medium text-gray-400 mb-1">Search Database</label>
                 <input type="text" id="searchInput" placeholder="Type ID, Street, or District..." 
                        class="w-full p-2 rounded bg-gray-700 border border-gray-600 text-white placeholder-gray-400 focus:outline-none focus:border-blue-500 transition-colors" disabled>
             </div>
 
-            <!-- Batch ID Search Box -->
+            <!-- Network Filters -->
+            <div>
+                <label class="block text-sm font-medium text-gray-400 mb-1">Network Filters</label>
+                <div class="flex flex-col gap-2">
+                    <select id="regionFilter" class="w-full p-2 rounded bg-gray-700 border border-gray-600 text-white focus:outline-none focus:border-blue-500 disabled:opacity-50" disabled>
+                        <option value="">All Regions</option>
+                    </select>
+                    <select id="exchFilter" class="w-full p-2 rounded bg-gray-700 border border-gray-600 text-white focus:outline-none focus:border-blue-500 disabled:opacity-50" disabled>
+                        <option value="">All Exchanges</option>
+                    </select>
+                    <select id="unitFilter" class="w-full p-2 rounded bg-gray-700 border border-gray-600 text-white focus:outline-none focus:border-blue-500 disabled:opacity-50" disabled>
+                        <option value="">All Units</option>
+                    </select>
+                </div>
+            </div>
+
+            <!-- Batch ID Check -->
             <div>
                 <label class="block text-sm font-medium text-gray-400 mb-1">Batch ID Check (Paste List)</label>
-                <textarea id="batchInput" rows="3" placeholder="Paste multiple IDs (from Excel, comma separated, or new lines)..." 
+                <textarea id="batchInput" rows="2" placeholder="Paste multiple IDs..." 
                           class="w-full p-2 rounded bg-gray-700 border border-gray-600 text-white placeholder-gray-400 focus:outline-none focus:border-blue-500 transition-colors" disabled></textarea>
                 <div class="flex gap-2 mt-2">
-                    <button id="batchSearchBtn" class="flex-1 bg-blue-600 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded transition-colors disabled:opacity-50" disabled>
+                    <button id="batchSearchBtn" class="flex-1 bg-blue-600 hover:bg-blue-700 text-white font-bold py-1.5 px-3 rounded transition-colors disabled:opacity-50 text-sm" disabled>
                         Check IDs
                     </button>
-                    <button id="clearBatchBtn" class="hidden flex-1 bg-gray-600 hover:bg-gray-700 text-white font-bold py-2 px-4 rounded transition-colors">
-                        Clear
+                    <button id="clearBatchBtn" class="hidden flex-1 bg-gray-600 hover:bg-gray-700 text-white font-bold py-1.5 px-3 rounded transition-colors text-sm">
+                        Clear Batch
                     </button>
                 </div>
             </div>
@@ -80,9 +92,17 @@
             <!-- Indicators Grid -->
             <div>
                 <h2 class="text-sm font-semibold text-gray-400 uppercase tracking-wider mb-1">Class Summary (Click to Filter)</h2>
-                <div class="grid grid-cols-2 gap-3 mt-2" id="indicators">
+                <div class="grid grid-cols-2 gap-2 mt-2" id="indicators">
                     <!-- Indicators injected here by JS -->
                 </div>
+            </div>
+
+            <!-- Export Button -->
+            <div class="mt-auto pt-4 border-t border-gray-600">
+                <button id="exportBtn" class="w-full bg-green-600 hover:bg-green-700 text-white font-bold py-2 px-4 rounded transition-colors disabled:opacity-50 flex items-center justify-center gap-2" disabled>
+                    <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"></path></svg>
+                    Export Filtered CSV <span id="exportCount" class="text-xs font-normal opacity-80">(0)</span>
+                </button>
             </div>
         </div>
         
@@ -91,11 +111,7 @@
 
     <script>
         // 1. Initialize Map WITH CANVAS RENDERER
-        const map = L.map('map', { 
-            maxZoom: 24, 
-            zoomControl: false,
-            preferCanvas: true 
-        }).setView([22.3193, 114.1694], 11);
+        const map = L.map('map', { maxZoom: 24, zoomControl: false, preferCanvas: true }).setView([22.3193, 114.1694], 11);
         L.control.zoom({ position: 'topright' }).addTo(map);
 
         L.tileLayer('https://mapapi.geodata.gov.hk/gs/api/v1.0.0/xyz/basemap/wgs84/{z}/{x}/{y}.png', { maxNativeZoom: 19, maxZoom: 24, attribution: '&copy; Lands Department' }).addTo(map);
@@ -106,9 +122,15 @@
 
         // Global State Variables
         let globalData = [];
+        let currentMapData = []; // Stores the currently filtered dataset
         let currentTextSearch = '';
         let currentBatchSearch = [];
         let currentClassFilter = null;
+        
+        // New Dropdown Filters State
+        let currentRegionFilter = '';
+        let currentExchFilter = '';
+        let currentUnitFilter = '';
         
         // Marker Cache Memory
         const markerCache = new Map();
@@ -118,6 +140,26 @@
             if (cls === 'ON_CENTRAL_DIVIDER_MEDIUM') return 'CENTRAL DIVIDER (MED)';
             if (cls === 'ON_BRIDGE') return 'ON BRIDGE (天橋)';
             return cls;
+        }
+
+        // Helper to populate dropdowns dynamically
+        function populateDropdowns(data) {
+            const regions = [...new Set(data.map(d => d.Region).filter(Boolean))].sort();
+            const exchs = [...new Set(data.map(d => d.EXCHCODE).filter(Boolean))].sort();
+            const units = [...new Set(data.map(d => d.Unit).filter(Boolean))].sort();
+
+            const regionSelect = document.getElementById('regionFilter');
+            regions.forEach(r => regionSelect.add(new Option(r, r)));
+
+            const exchSelect = document.getElementById('exchFilter');
+            exchs.forEach(e => exchSelect.add(new Option(e, e)));
+
+            const unitSelect = document.getElementById('unitFilter');
+            units.forEach(u => unitSelect.add(new Option(u, u)));
+
+            regionSelect.disabled = false;
+            exchSelect.disabled = false;
+            unitSelect.disabled = false;
         }
 
         // 2. Fetch the newly merged CSV
@@ -135,23 +177,33 @@
                             return row;
                         });
                         
+                        populateDropdowns(globalData);
+                        
                         document.getElementById('status').style.display = 'none';
                         document.getElementById('searchInput').disabled = false;
                         document.getElementById('batchInput').disabled = false;
                         document.getElementById('batchSearchBtn').disabled = false;
+                        document.getElementById('exportBtn').disabled = false;
+                        
                         updateDashboard();
                     }
                 });
             })
             .catch(() => {
                 document.getElementById('status').classList.replace('text-yellow-400', 'text-red-500');
-                document.getElementById('status').innerHTML = `<strong>Error:</strong> Could not load CSV. Ensure the filename matches.`;
+                document.getElementById('status').innerHTML = `<strong>Error:</strong> Could not load CSV. Ensure 'hk_lamppost_master.csv' is uploaded.`;
             });
 
         // 3. Central Update Function
         function updateDashboard() {
             let baseData = globalData;
             
+            // Apply Dropdown Filters
+            if (currentRegionFilter) baseData = baseData.filter(row => row.Region === currentRegionFilter);
+            if (currentExchFilter) baseData = baseData.filter(row => row.EXCHCODE === currentExchFilter);
+            if (currentUnitFilter) baseData = baseData.filter(row => row.Unit === currentUnitFilter);
+
+            // Apply Search Filters
             if (currentTextSearch) {
                 baseData = baseData.filter(row => {
                     const idStr = String(row.lamp_post_id || '').toLowerCase();
@@ -164,6 +216,7 @@
                 baseData = baseData.filter(row => currentBatchSearch.includes(String(row.lamp_post_id || '').toLowerCase()));
             }
 
+            // Calculate Class Counts based on filtered data
             const classCounts = {};
             baseData.forEach(row => {
                 const lampClass = row.class || 'UNKNOWN';
@@ -171,10 +224,10 @@
             });
             const sortedClasses = Object.entries(classCounts).sort((a, b) => b[1] - a[1]).slice(0, 4);
 
+            // Render Class Indicators
             const indicatorsContainer = document.getElementById('indicators');
             indicatorsContainer.innerHTML = sortedClasses.map(([cls, count]) => {
                 const isSelected = currentClassFilter === cls;
-                
                 const isDivider = cls.includes('CENTRAL_DIVIDER');
                 const isBridge = cls === 'ON_BRIDGE';
                 
@@ -190,27 +243,30 @@
                 `;
             }).join('');
 
-            let mapData = baseData;
+            // Apply Class Filter for Final Map Data
+            currentMapData = baseData;
             if (currentClassFilter) {
-                mapData = mapData.filter(row => row.class === currentClassFilter);
+                currentMapData = currentMapData.filter(row => row.class === currentClassFilter);
             }
 
+            // Update Export Button Count
+            document.getElementById('exportCount').innerText = `(${currentMapData.length})`;
+
+            // Render Map Markers
             markers.clearLayers();
             let bounds = L.latLngBounds();
             const newMarkers = [];
 
-            mapData.forEach(row => {
+            currentMapData.forEach(row => {
                 let marker = markerCache.get(row._uid);
                 
                 if (!marker) {
                     const lampClass = row.class || 'UNKNOWN';
-                    
                     const isDivider = lampClass.includes('CENTRAL_DIVIDER');
                     const isBridge = lampClass === 'ON_BRIDGE';
                     
                     const markerColor = isDivider ? '#ef4444' : (isBridge ? '#a855f7' : '#2563eb');
                     const fillColor = isDivider ? '#f87171' : (isBridge ? '#c084fc' : '#3b82f6');
-                    
                     const streetViewUrl = `https://www.google.com/maps/@?api=1&map_action=pano&viewpoint=${row.lat},${row.lon}`;
 
                     marker = L.circleMarker([row.lat, row.lon], {
@@ -225,11 +281,7 @@
                             <strong>Street:</strong> ${row.street || 'N/A'}<br>
                             <strong>District:</strong> ${row.district || 'N/A'}<br>
                             <strong>Class:</strong> <span style="color:${isDivider ? 'red' : (isBridge ? 'purple' : 'blue')}; font-weight:bold;">${formatClassName(lampClass)}</span>
-                            
-                            <!-- Google Street View Button -->
-                            <a href="${streetViewUrl}" target="_blank" class="street-view-btn">
-                                🗺️ Open in Street View
-                            </a>
+                            <a href="${streetViewUrl}" target="_blank" class="street-view-btn">🗺️ Open in Street View</a>
                         </div>
                     `);
                     markerCache.set(row._uid, marker);
@@ -241,15 +293,21 @@
 
             markers.addLayers(newMarkers);
 
-            if (mapData.length > 0 && (currentTextSearch || currentBatchSearch.length > 0 || currentClassFilter)) {
+            if (currentMapData.length > 0 && (currentTextSearch || currentBatchSearch.length > 0 || currentClassFilter || currentRegionFilter || currentExchFilter || currentUnitFilter)) {
                 map.flyToBounds(bounds, { padding: [50, 50], maxZoom: 18, duration: 1.5 });
             }
         }
 
+        // 4. Event Listeners
         window.toggleClassFilter = function(cls) {
             currentClassFilter = (currentClassFilter === cls) ? null : cls;
             updateDashboard();
         };
+
+        // Dropdown Listeners
+        document.getElementById('regionFilter').addEventListener('change', (e) => { currentRegionFilter = e.target.value; updateDashboard(); });
+        document.getElementById('exchFilter').addEventListener('change', (e) => { currentExchFilter = e.target.value; updateDashboard(); });
+        document.getElementById('unitFilter').addEventListener('change', (e) => { currentUnitFilter = e.target.value; updateDashboard(); });
 
         let searchTimeout;
         document.getElementById('searchInput').addEventListener('input', (e) => {
@@ -274,6 +332,43 @@
             document.getElementById('clearBatchBtn').classList.add('hidden');
             currentBatchSearch = [];
             updateDashboard();
+        });
+
+        // 5. Export Functionality
+        document.getElementById('exportBtn').addEventListener('click', () => {
+            if (currentMapData.length === 0) {
+                alert("No data available to export.");
+                return;
+            }
+
+            // Map data to clean objects for CSV
+            const exportData = currentMapData.map(row => ({
+                Lamppost_ID: row.lamp_post_id,
+                Region: row.Region || '',
+                Exchange: row.EXCHCODE || '',
+                Unit: row.Unit || '',
+                Street: row.street || '',
+                District: row.district || '',
+                Class: row.class || '',
+                Latitude: row.lat,
+                Longitude: row.lon
+            }));
+
+            // Convert to CSV string using PapaParse
+            const csv = Papa.unparse(exportData);
+            
+            // Create download link
+            const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+            const link = document.createElement("a");
+            const url = URL.createObjectURL(blob);
+            
+            link.setAttribute("href", url);
+            link.setAttribute("download", "HK_Lampposts_Filtered.csv");
+            link.style.visibility = 'hidden';
+            
+            document.body.appendChild(link);
+            link.click();
+            document.body.removeChild(link);
         });
     </script>
 </body>
