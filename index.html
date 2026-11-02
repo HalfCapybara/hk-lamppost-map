@@ -26,6 +26,24 @@
         .indicator-value { font-size: 1.5rem; font-weight: bold; }
         .indicator-label { font-size: 0.75rem; color: #d1d5db; text-transform: uppercase; margin-top: 5px; font-weight: 600; line-height: 1.2; }
         .leaflet-popup-content { color: #111827; } 
+        
+        /* Custom style for the Street View button inside the Leaflet popup */
+        .street-view-btn {
+            display: block;
+            margin-top: 10px;
+            text-align: center;
+            background-color: #2563eb;
+            color: white !important;
+            padding: 8px;
+            border-radius: 6px;
+            text-decoration: none;
+            font-size: 0.85rem;
+            font-weight: bold;
+            transition: background-color 0.2s;
+        }
+        .street-view-btn:hover {
+            background-color: #1d4ed8;
+        }
     </style>
 </head>
 <body>
@@ -100,7 +118,7 @@
         function formatClassName(cls) {
             if (cls === 'ON_CENTRAL_DIVIDER_HIGH') return 'CENTRAL DIVIDER (HIGH)';
             if (cls === 'ON_CENTRAL_DIVIDER_MEDIUM') return 'CENTRAL DIVIDER (MED)';
-            if (cls === 'ON_BRIDGE') return 'ON BRIDGE (天橋)'; // 新增天橋類別
+            if (cls === 'ON_BRIDGE') return 'ON BRIDGE (天橋)';
             return cls;
         }
 
@@ -129,7 +147,7 @@
             })
             .catch(() => {
                 document.getElementById('status').classList.replace('text-yellow-400', 'text-red-500');
-                document.getElementById('status').innerHTML = `<strong>Error:</strong> Could not load CSV.`;
+                document.getElementById('status').innerHTML = `<strong>Error:</strong> Could not load CSV. Ensure the filename matches.`;
             });
 
         // 3. Central Update Function
@@ -196,15 +214,23 @@
                     
                     const markerColor = isDivider ? '#ef4444' : (isBridge ? '#a855f7' : '#2563eb');
                     const fillColor = isDivider ? '#f87171' : (isBridge ? '#c084fc' : '#3b82f6');
+                    
+                    // 動態產生 Google Street View 網址
+                    const streetViewUrl = `https://www.google.com/maps/@?api=1&map_action=pano&viewpoint=${row.lat},${row.lon}`;
 
                     marker = L.circleMarker([row.lat, row.lon], {
                         radius: 5, color: markerColor, fillColor: fillColor, fillOpacity: 0.9, weight: 1
                     }).bindPopup(`
-                        <div style="font-family: sans-serif;">
+                        <div style="font-family: sans-serif; min-width: 180px;">
                             <strong>ID:</strong> ${row.lamp_post_id}<br>
                             <strong>Street:</strong> ${row.street || 'N/A'}<br>
                             <strong>District:</strong> ${row.district || 'N/A'}<br>
                             <strong>Class:</strong> <span style="color:${isDivider ? 'red' : (isBridge ? 'purple' : 'blue')}; font-weight:bold;">${formatClassName(lampClass)}</span>
+                            
+                            <!-- Google Street View Button -->
+                            <a href="${streetViewUrl}" target="_blank" class="street-view-btn">
+                                🗺️ Open in Street View
+                            </a>
                         </div>
                     `);
                     markerCache.set(row._uid, marker);
