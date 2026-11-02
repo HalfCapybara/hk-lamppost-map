@@ -25,7 +25,12 @@
         .indicator:hover { transform: translateY(-2px); box-shadow: 0 4px 6px rgba(0,0,0,0.3); }
         .indicator-value { font-size: 1.5rem; font-weight: bold; }
         .indicator-label { font-size: 0.75rem; color: #d1d5db; text-transform: uppercase; margin-top: 5px; font-weight: 600; line-height: 1.2; }
-        .leaflet-popup-content { color: #111827; } 
+        .leaflet-popup-content { color: #111827; }
+        
+        /* Custom scrollbar for the list */
+        #lamppostList::-webkit-scrollbar { width: 6px; }
+        #lamppostList::-webkit-scrollbar-track { background: #1f2937; }
+        #lamppostList::-webkit-scrollbar-thumb { background: #4b5563; border-radius: 3px; }
     </style>
 </head>
 <body>
@@ -67,6 +72,20 @@
                     <!-- Indicators injected here by JS -->
                 </div>
             </div>
+
+            <!-- Embedded List Section -->
+            <div id="listSection" class="hidden flex-col gap-2 mt-2 pt-4 border-t border-gray-600">
+                <div class="flex justify-between items-end mb-1">
+                    <h2 class="text-sm font-semibold text-gray-400 uppercase tracking-wider">Filtered List <span id="listCount" class="text-xs text-gray-500 normal-case ml-1"></span></h2>
+                    <button id="copyListBtn" class="text-xs bg-gray-700 hover:bg-gray-600 text-white py-1 px-3 rounded transition-colors font-medium border border-gray-500">
+                        Copy All IDs
+                    </button>
+                </div>
+                <div id="lamppostList" class="bg-gray-800 rounded p-2 overflow-y-auto text-sm border border-gray-700" style="max-height: 250px;">
+                    <!-- List items injected here -->
+                </div>
+            </div>
+
         </div>
         
         <div id="map"></div>
@@ -86,67 +105,3 @@
         // Global State Variables
         let globalData = [];
         let currentTextSearch = '';
-        let currentBatchSearch = [];
-        let currentClassFilter = null;
-
-        // Helper to format long class names
-        function formatClassName(cls) {
-            if (cls === 'ON_CENTRAL_DIVIDER_HIGH') return 'CENTRAL DIVIDER (HIGH)';
-            if (cls === 'ON_CENTRAL_DIVIDER_MEDIUM') return 'CENTRAL DIVIDER (MED)';
-            return cls;
-        }
-
-        // 2. Fetch CSV
-        fetch('hk_lamppost_145k_classified.csv')
-            .then(res => { if (!res.ok) throw new Error(); return res.text(); })
-            .then(csvText => {
-                document.getElementById('status').innerText = "Parsing data...";
-                document.getElementById('status').classList.replace('text-yellow-400', 'text-blue-400');
-                
-                Papa.parse(csvText, {
-                    header: true, dynamicTyping: true, skipEmptyLines: true,
-                    complete: function(results) {
-                        globalData = results.data.filter(row => row.lat && row.lon);
-                        document.getElementById('status').style.display = 'none';
-                        document.getElementById('searchInput').disabled = false;
-                        document.getElementById('batchInput').disabled = false;
-                        document.getElementById('batchSearchBtn').disabled = false;
-                        updateDashboard();
-                    }
-                });
-            })
-            .catch(() => {
-                document.getElementById('status').classList.replace('text-yellow-400', 'text-red-500');
-                document.getElementById('status').innerHTML = `<strong>Error:</strong> Could not load CSV.`;
-            });
-
-        // 3. Central Update Function
-        function updateDashboard() {
-            let baseData = globalData;
-            
-            if (currentTextSearch) {
-                baseData = baseData.filter(row => {
-                    const idStr = String(row.lamp_post_id || '').toLowerCase();
-                    const streetStr = String(row.street || '').toLowerCase();
-                    const districtStr = String(row.district || '').toLowerCase();
-                    return idStr.includes(currentTextSearch) || streetStr.includes(currentTextSearch) || districtStr.includes(currentTextSearch);
-                });
-            }
-            if (currentBatchSearch.length > 0) {
-                baseData = baseData.filter(row => currentBatchSearch.includes(String(row.lamp_post_id || '').toLowerCase()));
-            }
-
-            const classCounts = {};
-            baseData.forEach(row => {
-                const lampClass = row.class || 'UNKNOWN';
-                classCounts[lampClass] = (classCounts[lampClass] || 0) + 1;
-            });
-            const sortedClasses = Object.entries(classCounts).sort((a, b) => b[1] - a[1]).slice(0, 4);
-
-            const indicatorsContainer = document.getElementById('indicators');
-            indicatorsContainer.innerHTML = sortedClasses.map(([cls, count]) => {
-                const isSelected = currentClassFilter === cls;
-                const isDivider = cls.includes('CENTRAL_DIVIDER');
-                const baseColor = isDivider ? 'red' : 'blue';
-                const textClass = isDivider ? 'text-red-400' : 'text-blue-400';
-                const borderClass = isSelected ? `border-2 border-${baseColor}-400 bg-${baseColor}-900/30` :
