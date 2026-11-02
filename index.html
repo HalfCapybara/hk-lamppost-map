@@ -21,9 +21,10 @@
         #app { display: flex; height: 100vh; width: 100vw; }
         #sidebar { width: 350px; background: #1f2937; padding: 20px; display: flex; flex-direction: column; gap: 20px; overflow-y: auto; z-index: 1000; box-shadow: 2px 0 10px rgba(0,0,0,0.5); }
         #map { flex-grow: 1; height: 100%; background: #000; z-index: 1; }
-        .indicator { background: #374151; padding: 15px; border-radius: 8px; text-align: center; border: 1px solid #4b5563; }
-        .indicator-value { font-size: 1.5rem; font-weight: bold; color: #60a5fa; }
-        .indicator-label { font-size: 0.8rem; color: #9ca3af; text-transform: uppercase; margin-top: 5px; }
+        .indicator { background: #374151; padding: 15px; border-radius: 8px; text-align: center; transition: all 0.2s ease-in-out; }
+        .indicator:hover { transform: translateY(-2px); box-shadow: 0 4px 6px rgba(0,0,0,0.3); }
+        .indicator-value { font-size: 1.5rem; font-weight: bold; }
+        .indicator-label { font-size: 0.8rem; color: #d1d5db; text-transform: uppercase; margin-top: 5px; font-weight: 600; }
         .leaflet-popup-content { color: #111827; } 
     </style>
 </head>
@@ -61,8 +62,8 @@
             
             <!-- Indicators Grid -->
             <div>
-                <h2 class="text-sm font-semibold text-gray-400 uppercase tracking-wider mb-2">Class Summary (Top 4)</h2>
-                <div class="grid grid-cols-2 gap-3" id="indicators">
+                <h2 class="text-sm font-semibold text-gray-400 uppercase tracking-wider mb-1">Class Summary (Click to Filter)</h2>
+                <div class="grid grid-cols-2 gap-3 mt-2" id="indicators">
                     <!-- Indicators injected here by JS -->
                 </div>
             </div>
@@ -72,92 +73,108 @@
     </div>
 
     <script>
-        // 1. Initialize the Map
-        const map = L.map('map', {
-            maxZoom: 24, 
-            zoomControl: false 
-        }).setView([22.3193, 114.1694], 11);
-        
+        // 1. Initialize Map
+        const map = L.map('map', { maxZoom: 24, zoomControl: false }).setView([22.3193, 114.1694], 11);
         L.control.zoom({ position: 'topright' }).addTo(map);
 
-        // 2. Add LandsD Basemap layer
-        L.tileLayer('https://mapapi.geodata.gov.hk/gs/api/v1.0.0/xyz/basemap/wgs84/{z}/{x}/{y}.png', {
-            maxNativeZoom: 19,
-            maxZoom: 24,
-            attribution: '&copy; Lands Department'
-        }).addTo(map);
+        L.tileLayer('https://mapapi.geodata.gov.hk/gs/api/v1.0.0/xyz/basemap/wgs84/{z}/{x}/{y}.png', { maxNativeZoom: 19, maxZoom: 24, attribution: '&copy; Lands Department' }).addTo(map);
+        L.tileLayer('https://mapapi.geodata.gov.hk/gs/api/v1.0.0/xyz/label/hk/tc/wgs84/{z}/{x}/{y}.png', { maxNativeZoom: 19, maxZoom: 24 }).addTo(map);
 
-        // 3. Add LandsD Traditional Chinese Labels layer
-        L.tileLayer('https://mapapi.geodata.gov.hk/gs/api/v1.0.0/xyz/label/hk/tc/wgs84/{z}/{x}/{y}.png', {
-            maxNativeZoom: 19,
-            maxZoom: 24
-        }).addTo(map);
-
-        // 4. Set up cluster group for performance
-        const markers = L.markerClusterGroup({
-            chunkedLoading: true,
-            maxClusterRadius: 60,
-            disableClusteringAtZoom: 18 
-        });
+        const markers = L.markerClusterGroup({ chunkedLoading: true, maxClusterRadius: 60, disableClusteringAtZoom: 18 });
         map.addLayer(markers);
 
+        // Global State Variables
         let globalData = [];
+        let currentTextSearch = '';
+        let currentBatchSearch = [];
+        let currentClassFilter = null;
 
-        // 5. Automatically fetch the CSV file on load
+        // 2. Fetch CSV
         fetch('hk_lamppost_145k_classified.csv')
-            .then(response => {
-                if (!response.ok) throw new Error("CSV file not found on server.");
-                return response.text();
-            })
+            .then(res => { if (!res.ok) throw new Error(); return res.text(); })
             .then(csvText => {
                 document.getElementById('status').innerText = "Parsing data...";
                 document.getElementById('status').classList.replace('text-yellow-400', 'text-blue-400');
                 
                 Papa.parse(csvText, {
-                    header: true,
-                    dynamicTyping: true,
-                    skipEmptyLines: true,
+                    header: true, dynamicTyping: true, skipEmptyLines: true,
                     complete: function(results) {
                         globalData = results.data.filter(row => row.lat && row.lon);
-                        
                         document.getElementById('status').style.display = 'none';
                         document.getElementById('searchInput').disabled = false;
                         document.getElementById('batchInput').disabled = false;
                         document.getElementById('batchSearchBtn').disabled = false;
-                        
-                        renderDashboard(globalData);
+                        updateDashboard();
                     }
                 });
             })
-            .catch(err => {
-                const statusDiv = document.getElementById('status');
-                statusDiv.classList.replace('text-yellow-400', 'text-red-500');
-                statusDiv.classList.remove('animate-pulse');
-                statusDiv.innerHTML = `<strong>Error:</strong> Could not load CSV. Ensure 'hk_lamppost_145k_classified.csv' is uploaded to your GitHub repository in the exact same folder as this HTML file.`;
+            .catch(() => {
+                document.getElementById('status').classList.replace('text-yellow-400', 'text-red-500');
+                document.getElementById('status').innerHTML = `<strong>Error:</strong> Could not load CSV.`;
             });
 
-        // 6. Main render function for map points and indicators
-        function renderDashboard(data) {
-            markers.clearLayers();
-            let bounds = L.latLngBounds();
-            const classCounts = {};
-            const newMarkers = [];
+        // 3. Central Update Function
+        function updateDashboard() {
+            // Step A: Apply Text & Batch Search to get base dataset
+            let baseData = globalData;
+            if (currentTextSearch) {
+                baseData = baseData.filter(row => {
+                    const idStr = String(row.lamp_post_id || '').toLowerCase();
+                    const streetStr = String(row.street || '').toLowerCase();
+                    const districtStr = String(row.district || '').toLowerCase();
+                    return idStr.includes(currentTextSearch) || streetStr.includes(currentTextSearch) || districtStr.includes(currentTextSearch);
+                });
+            }
+            if (currentBatchSearch.length > 0) {
+                baseData = baseData.filter(row => currentBatchSearch.includes(String(row.lamp_post_id || '').toLowerCase()));
+            }
 
-            data.forEach(row => {
+            // Step B: Calculate Class Counts for Indicators (Always based on search results, ignoring class filter so you can toggle them)
+            const classCounts = {};
+            baseData.forEach(row => {
                 const lampClass = row.class || 'UNKNOWN';
                 classCounts[lampClass] = (classCounts[lampClass] || 0) + 1;
+            });
+            const sortedClasses = Object.entries(classCounts).sort((a, b) => b[1] - a[1]).slice(0, 4);
 
-                // Color code Central Divider vs Roadside
+            // Step C: Render Interactive Indicators
+            const indicatorsContainer = document.getElementById('indicators');
+            indicatorsContainer.innerHTML = sortedClasses.map(([cls, count]) => {
+                const isSelected = currentClassFilter === cls;
+                const isDivider = cls.includes('CENTRAL_DIVIDER');
+                const baseColor = isDivider ? 'red' : 'blue';
+                const textClass = isDivider ? 'text-red-400' : 'text-blue-400';
+                
+                // Styling changes when selected vs not selected
+                const borderClass = isSelected ? `border-2 border-${baseColor}-400 bg-${baseColor}-900/30` : `border border-gray-600 cursor-pointer hover:border-gray-400`;
+
+                return `
+                    <div class="indicator ${borderClass} cursor-pointer" onclick="window.toggleClassFilter('${cls}')">
+                        <div class="indicator-value ${textClass}">${count.toLocaleString()}</div>
+                        <div class="indicator-label">${cls}</div>
+                    </div>
+                `;
+            }).join('');
+
+            // Step D: Apply Class Filter for the Map Display
+            let mapData = baseData;
+            if (currentClassFilter) {
+                mapData = mapData.filter(row => row.class === currentClassFilter);
+            }
+
+            // Step E: Render Map Points
+            markers.clearLayers();
+            let bounds = L.latLngBounds();
+            const newMarkers = [];
+
+            mapData.forEach(row => {
+                const lampClass = row.class || 'UNKNOWN';
                 const isDivider = lampClass.includes('CENTRAL_DIVIDER');
-                const markerColor = isDivider ? '#ef4444' : '#2563eb'; // Red for divider, Blue for normal
+                const markerColor = isDivider ? '#ef4444' : '#2563eb';
                 const fillColor = isDivider ? '#f87171' : '#3b82f6';
 
                 const marker = L.circleMarker([row.lat, row.lon], {
-                    radius: 5,
-                    color: markerColor,
-                    fillColor: fillColor,
-                    fillOpacity: 0.9,
-                    weight: 1
+                    radius: 5, color: markerColor, fillColor: fillColor, fillOpacity: 0.9, weight: 1
                 }).bindPopup(`
                     <div style="font-family: sans-serif;">
                         <strong>ID:</strong> ${row.lamp_post_id}<br>
@@ -173,70 +190,46 @@
 
             markers.addLayers(newMarkers);
 
-            if (data.length > 0) {
+            if (mapData.length > 0) {
                 map.flyToBounds(bounds, { padding: [50, 50], maxZoom: 18, duration: 1.5 });
             }
-
-            const sortedClasses = Object.entries(classCounts)
-                .sort((a, b) => b[1] - a[1])
-                .slice(0, 4);
-
-            const indicatorsContainer = document.getElementById('indicators');
-            indicatorsContainer.innerHTML = sortedClasses.map(([cls, count]) => `
-                <div class="indicator">
-                    <div class="indicator-value ${cls.includes('CENTRAL_DIVIDER') ? 'text-red-400' : 'text-blue-400'}">${count.toLocaleString()}</div>
-                    <div class="indicator-label">${cls}</div>
-                </div>
-            `).join('');
         }
 
-        // 7. Handle Single Search
+        // 4. Handle Indicator Click
+        window.toggleClassFilter = function(cls) {
+            // If already selected, clear it. Otherwise, set it to the clicked class.
+            currentClassFilter = (currentClassFilter === cls) ? null : cls;
+            updateDashboard();
+        };
+
+        // 5. Handle Single Search
         let searchTimeout;
         document.getElementById('searchInput').addEventListener('input', (e) => {
             clearTimeout(searchTimeout);
-            const query = e.target.value.toLowerCase().trim();
-            
             searchTimeout = setTimeout(() => {
-                if (!query) {
-                    renderDashboard(globalData);
-                    return;
-                }
-                const filtered = globalData.filter(row => {
-                    const idStr = String(row.lamp_post_id || '').toLowerCase();
-                    const streetStr = String(row.street || '').toLowerCase();
-                    const districtStr = String(row.district || '').toLowerCase();
-                    return idStr.includes(query) || streetStr.includes(query) || districtStr.includes(query);
-                });
-                renderDashboard(filtered);
+                currentTextSearch = e.target.value.toLowerCase().trim();
+                updateDashboard();
             }, 350); 
         });
 
-        // 8. Handle Batch ID Search
+        // 6. Handle Batch ID Search
         document.getElementById('batchSearchBtn').addEventListener('click', () => {
             const input = document.getElementById('batchInput').value;
             if (!input.trim()) return;
 
-            // Split input by newlines, commas, or spaces
-            const idsToSearch = input.split(/[\n,\s]+/)
-                                     .map(id => id.trim().toLowerCase())
-                                     .filter(id => id.length > 0);
+            currentBatchSearch = input.split(/[\n,\s]+/).map(id => id.trim().toLowerCase()).filter(id => id.length > 0);
+            if (currentBatchSearch.length === 0) return;
 
-            if (idsToSearch.length === 0) return;
-
-            const filtered = globalData.filter(row => {
-                const idStr = String(row.lamp_post_id || '').toLowerCase();
-                return idsToSearch.includes(idStr);
-            });
-
-            renderDashboard(filtered);
             document.getElementById('clearBatchBtn').classList.remove('hidden');
+            updateDashboard();
         });
 
-        // 9. Clear Batch Search
+        // 7. Clear Batch Search
         document.getElementById('clearBatchBtn').addEventListener('click', () => {
             document.getElementById('batchInput').value = '';
             document.getElementById('clearBatchBtn').classList.add('hidden');
-            renderDashboard(globalData);
+            currentBatchSearch = [];
+            updateDashboard();
         });
     </script>
 </body>
