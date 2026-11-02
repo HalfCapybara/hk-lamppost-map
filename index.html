@@ -4,16 +4,16 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>HK Lamppost Dashboard</title>
-    <!-- Tailwind CSS -->
+    <!-- Tailwind CSS for styling -->
     <script src="https://cdn.tailwindcss.com"></script>
-    <!-- Leaflet CSS & JS -->
+    <!-- Leaflet CSS & JS for Mapping -->
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
     <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
-    <!-- MarkerCluster CSS & JS -->
+    <!-- Leaflet MarkerCluster CSS & JS for handling 145k points -->
     <link rel="stylesheet" href="https://unpkg.com/leaflet.markercluster@1.4.1/dist/MarkerCluster.css" />
     <link rel="stylesheet" href="https://unpkg.com/leaflet.markercluster@1.4.1/dist/MarkerCluster.Default.css" />
     <script src="https://unpkg.com/leaflet.markercluster@1.4.1/dist/leaflet.markercluster.js"></script>
-    <!-- PapaParse -->
+    <!-- PapaParse for reading the CSV -->
     <script src="https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.4.1/papaparse.min.js"></script>
     
     <style>
@@ -22,10 +22,10 @@
         #sidebar { width: 350px; background: #1f2937; padding: 20px; display: flex; flex-direction: column; gap: 20px; overflow-y: auto; z-index: 1000; box-shadow: 2px 0 10px rgba(0,0,0,0.5); }
         #map { flex-grow: 1; height: 100%; background: #000; z-index: 1; }
         .indicator { background: #374151; padding: 15px; border-radius: 8px; text-align: center; transition: all 0.2s ease-in-out; }
-        .indicator:hover { transform: translateY(-2px); box-shadow: 0 4px 6px rgba(0,0,0,0.3); cursor: pointer; }
+        .indicator:hover { transform: translateY(-2px); box-shadow: 0 4px 6px rgba(0,0,0,0.3); }
         .indicator-value { font-size: 1.5rem; font-weight: bold; }
         .indicator-label { font-size: 0.75rem; color: #d1d5db; text-transform: uppercase; margin-top: 5px; font-weight: 600; line-height: 1.2; }
-        .leaflet-popup-content { color: #111827; }
+        .leaflet-popup-content { color: #111827; } 
     </style>
 </head>
 <body>
@@ -34,8 +34,8 @@
             <h1 class="text-xl font-bold border-b border-gray-600 pb-2">HK Lamppost Map</h1>
             
             <!-- Status Indicator -->
-            <div id="status" class="text-sm text-yellow-400 font-semibold animate-pulse bg-gray-800 p-3 rounded border border-yellow-600">
-                Downloading & parsing dataset... please wait.
+            <div id="status" class="text-sm text-yellow-400 font-semibold animate-pulse">
+                Downloading dataset... please wait.
             </div>
             
             <!-- Single Search Bar -->
@@ -63,7 +63,9 @@
             <!-- Indicators Grid -->
             <div>
                 <h2 class="text-sm font-semibold text-gray-400 uppercase tracking-wider mb-1">Class Summary (Click to Filter)</h2>
-                <div class="grid grid-cols-2 gap-3 mt-2" id="indicators"></div>
+                <div class="grid grid-cols-2 gap-3 mt-2" id="indicators">
+                    <!-- Indicators injected here by JS -->
+                </div>
             </div>
         </div>
         
@@ -71,11 +73,164 @@
     </div>
 
     <script>
-        // 1. Initialize Map with Canvas Renderer (Hardware Acceleration)
-        const map = L.map('map', { 
-            maxZoom: 24, 
-            zoomControl: false,
-            preferCanvas: true 
-        }).setView([22.3193, 114.1694], 11);
-        
-        L.control.zoom({ position
+        // 1. Initialize Map
+        const map = L.map('map', { maxZoom: 24, zoomControl: false }).setView([22.3193, 114.1694], 11);
+        L.control.zoom({ position: 'topright' }).addTo(map);
+
+        L.tileLayer('https://mapapi.geodata.gov.hk/gs/api/v1.0.0/xyz/basemap/wgs84/{z}/{x}/{y}.png', { maxNativeZoom: 19, maxZoom: 24, attribution: '&copy; Lands Department' }).addTo(map);
+        L.tileLayer('https://mapapi.geodata.gov.hk/gs/api/v1.0.0/xyz/label/hk/tc/wgs84/{z}/{x}/{y}.png', { maxNativeZoom: 19, maxZoom: 24 }).addTo(map);
+
+        const markers = L.markerClusterGroup({ chunkedLoading: true, maxClusterRadius: 60, disableClusteringAtZoom: 18 });
+        map.addLayer(markers);
+
+        // Global State Variables
+        let globalData = [];
+        let currentTextSearch = '';
+        let currentBatchSearch = [];
+        let currentClassFilter = null;
+
+        // Helper to format long class names
+        function formatClassName(cls) {
+            if (cls === 'ON_CENTRAL_DIVIDER_HIGH') return 'CENTRAL DIVIDER (HIGH)';
+            if (cls === 'ON_CENTRAL_DIVIDER_MEDIUM') return 'CENTRAL DIVIDER (MED)';
+            return cls;
+        }
+
+        // 2. Fetch CSV
+        fetch('hk_lamppost_145k_classified.csv')
+            .then(res => { if (!res.ok) throw new Error(); return res.text(); })
+            .then(csvText => {
+                document.getElementById('status').innerText = "Parsing data...";
+                document.getElementById('status').classList.replace('text-yellow-400', 'text-blue-400');
+                
+                Papa.parse(csvText, {
+                    header: true, dynamicTyping: true, skipEmptyLines: true,
+                    complete: function(results) {
+                        globalData = results.data.filter(row => row.lat && row.lon);
+                        document.getElementById('status').style.display = 'none';
+                        document.getElementById('searchInput').disabled = false;
+                        document.getElementById('batchInput').disabled = false;
+                        document.getElementById('batchSearchBtn').disabled = false;
+                        updateDashboard();
+                    }
+                });
+            })
+            .catch(() => {
+                document.getElementById('status').classList.replace('text-yellow-400', 'text-red-500');
+                document.getElementById('status').innerHTML = `<strong>Error:</strong> Could not load CSV.`;
+            });
+
+        // 3. Central Update Function
+        function updateDashboard() {
+            let baseData = globalData;
+            
+            if (currentTextSearch) {
+                baseData = baseData.filter(row => {
+                    const idStr = String(row.lamp_post_id || '').toLowerCase();
+                    const streetStr = String(row.street || '').toLowerCase();
+                    const districtStr = String(row.district || '').toLowerCase();
+                    return idStr.includes(currentTextSearch) || streetStr.includes(currentTextSearch) || districtStr.includes(currentTextSearch);
+                });
+            }
+            if (currentBatchSearch.length > 0) {
+                baseData = baseData.filter(row => currentBatchSearch.includes(String(row.lamp_post_id || '').toLowerCase()));
+            }
+
+            const classCounts = {};
+            baseData.forEach(row => {
+                const lampClass = row.class || 'UNKNOWN';
+                classCounts[lampClass] = (classCounts[lampClass] || 0) + 1;
+            });
+            const sortedClasses = Object.entries(classCounts).sort((a, b) => b[1] - a[1]).slice(0, 4);
+
+            const indicatorsContainer = document.getElementById('indicators');
+            indicatorsContainer.innerHTML = sortedClasses.map(([cls, count]) => {
+                const isSelected = currentClassFilter === cls;
+                const isDivider = cls.includes('CENTRAL_DIVIDER');
+                const baseColor = isDivider ? 'red' : 'blue';
+                const textClass = isDivider ? 'text-red-400' : 'text-blue-400';
+                const borderClass = isSelected ? `border-2 border-${baseColor}-400 bg-${baseColor}-900/30` : `border border-gray-600 cursor-pointer hover:border-gray-400`;
+
+                return `
+                    <div class="indicator ${borderClass} cursor-pointer" onclick="window.toggleClassFilter('${cls}')">
+                        <div class="indicator-value ${textClass}">${count.toLocaleString()}</div>
+                        <div class="indicator-label">${formatClassName(cls)}</div>
+                    </div>
+                `;
+            }).join('');
+
+            let mapData = baseData;
+            if (currentClassFilter) {
+                mapData = mapData.filter(row => row.class === currentClassFilter);
+            }
+
+            markers.clearLayers();
+            let bounds = L.latLngBounds();
+            const newMarkers = [];
+
+            mapData.forEach(row => {
+                const lampClass = row.class || 'UNKNOWN';
+                const isDivider = lampClass.includes('CENTRAL_DIVIDER');
+                const markerColor = isDivider ? '#ef4444' : '#2563eb';
+                const fillColor = isDivider ? '#f87171' : '#3b82f6';
+
+                const marker = L.circleMarker([row.lat, row.lon], {
+                    radius: 5, color: markerColor, fillColor: fillColor, fillOpacity: 0.9, weight: 1
+                }).bindPopup(`
+                    <div style="font-family: sans-serif;">
+                        <strong>ID:</strong> ${row.lamp_post_id}<br>
+                        <strong>Street:</strong> ${row.street || 'N/A'}<br>
+                        <strong>District:</strong> ${row.district || 'N/A'}<br>
+                        <strong>Class:</strong> <span style="color:${isDivider ? 'red' : 'blue'}; font-weight:bold;">${formatClassName(lampClass)}</span>
+                    </div>
+                `);
+                
+                newMarkers.push(marker);
+                bounds.extend([row.lat, row.lon]);
+            });
+
+            markers.addLayers(newMarkers);
+
+            if (mapData.length > 0) {
+                map.flyToBounds(bounds, { padding: [50, 50], maxZoom: 18, duration: 1.5 });
+            }
+        }
+
+        // 4. Handle Indicator Click
+        window.toggleClassFilter = function(cls) {
+            currentClassFilter = (currentClassFilter === cls) ? null : cls;
+            updateDashboard();
+        };
+
+        // 5. Handle Single Search
+        let searchTimeout;
+        document.getElementById('searchInput').addEventListener('input', (e) => {
+            clearTimeout(searchTimeout);
+            searchTimeout = setTimeout(() => {
+                currentTextSearch = e.target.value.toLowerCase().trim();
+                updateDashboard();
+            }, 350); 
+        });
+
+        // 6. Handle Batch ID Search
+        document.getElementById('batchSearchBtn').addEventListener('click', () => {
+            const input = document.getElementById('batchInput').value;
+            if (!input.trim()) return;
+
+            currentBatchSearch = input.split(/[\n,\s]+/).map(id => id.trim().toLowerCase()).filter(id => id.length > 0);
+            if (currentBatchSearch.length === 0) return;
+
+            document.getElementById('clearBatchBtn').classList.remove('hidden');
+            updateDashboard();
+        });
+
+        // 7. Clear Batch Search
+        document.getElementById('clearBatchBtn').addEventListener('click', () => {
+            document.getElementById('batchInput').value = '';
+            document.getElementById('clearBatchBtn').classList.add('hidden');
+            currentBatchSearch = [];
+            updateDashboard();
+        });
+    </script>
+</body>
+</html>
