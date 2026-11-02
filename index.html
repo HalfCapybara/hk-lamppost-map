@@ -24,7 +24,7 @@
         .indicator { background: #374151; padding: 15px; border-radius: 8px; text-align: center; transition: all 0.2s ease-in-out; }
         .indicator:hover { transform: translateY(-2px); box-shadow: 0 4px 6px rgba(0,0,0,0.3); }
         .indicator-value { font-size: 1.5rem; font-weight: bold; }
-        .indicator-label { font-size: 0.8rem; color: #d1d5db; text-transform: uppercase; margin-top: 5px; font-weight: 600; }
+        .indicator-label { font-size: 0.75rem; color: #d1d5db; text-transform: uppercase; margin-top: 5px; font-weight: 600; line-height: 1.2; }
         .leaflet-popup-content { color: #111827; } 
     </style>
 </head>
@@ -89,6 +89,13 @@
         let currentBatchSearch = [];
         let currentClassFilter = null;
 
+        // Helper to format long class names
+        function formatClassName(cls) {
+            if (cls === 'ON_CENTRAL_DIVIDER_HIGH') return 'CENTRAL DIVIDER (HIGH)';
+            if (cls === 'ON_CENTRAL_DIVIDER_MEDIUM') return 'CENTRAL DIVIDER (MED)';
+            return cls;
+        }
+
         // 2. Fetch CSV
         fetch('hk_lamppost_145k_classified.csv')
             .then(res => { if (!res.ok) throw new Error(); return res.text(); })
@@ -115,8 +122,8 @@
 
         // 3. Central Update Function
         function updateDashboard() {
-            // Step A: Apply Text & Batch Search to get base dataset
             let baseData = globalData;
+            
             if (currentTextSearch) {
                 baseData = baseData.filter(row => {
                     const idStr = String(row.lamp_post_id || '').toLowerCase();
@@ -129,7 +136,6 @@
                 baseData = baseData.filter(row => currentBatchSearch.includes(String(row.lamp_post_id || '').toLowerCase()));
             }
 
-            // Step B: Calculate Class Counts for Indicators (Always based on search results, ignoring class filter so you can toggle them)
             const classCounts = {};
             baseData.forEach(row => {
                 const lampClass = row.class || 'UNKNOWN';
@@ -137,100 +143,10 @@
             });
             const sortedClasses = Object.entries(classCounts).sort((a, b) => b[1] - a[1]).slice(0, 4);
 
-            // Step C: Render Interactive Indicators
             const indicatorsContainer = document.getElementById('indicators');
             indicatorsContainer.innerHTML = sortedClasses.map(([cls, count]) => {
                 const isSelected = currentClassFilter === cls;
                 const isDivider = cls.includes('CENTRAL_DIVIDER');
                 const baseColor = isDivider ? 'red' : 'blue';
                 const textClass = isDivider ? 'text-red-400' : 'text-blue-400';
-                
-                // Styling changes when selected vs not selected
-                const borderClass = isSelected ? `border-2 border-${baseColor}-400 bg-${baseColor}-900/30` : `border border-gray-600 cursor-pointer hover:border-gray-400`;
-
-                return `
-                    <div class="indicator ${borderClass} cursor-pointer" onclick="window.toggleClassFilter('${cls}')">
-                        <div class="indicator-value ${textClass}">${count.toLocaleString()}</div>
-                        <div class="indicator-label">${cls}</div>
-                    </div>
-                `;
-            }).join('');
-
-            // Step D: Apply Class Filter for the Map Display
-            let mapData = baseData;
-            if (currentClassFilter) {
-                mapData = mapData.filter(row => row.class === currentClassFilter);
-            }
-
-            // Step E: Render Map Points
-            markers.clearLayers();
-            let bounds = L.latLngBounds();
-            const newMarkers = [];
-
-            mapData.forEach(row => {
-                const lampClass = row.class || 'UNKNOWN';
-                const isDivider = lampClass.includes('CENTRAL_DIVIDER');
-                const markerColor = isDivider ? '#ef4444' : '#2563eb';
-                const fillColor = isDivider ? '#f87171' : '#3b82f6';
-
-                const marker = L.circleMarker([row.lat, row.lon], {
-                    radius: 5, color: markerColor, fillColor: fillColor, fillOpacity: 0.9, weight: 1
-                }).bindPopup(`
-                    <div style="font-family: sans-serif;">
-                        <strong>ID:</strong> ${row.lamp_post_id}<br>
-                        <strong>Street:</strong> ${row.street || 'N/A'}<br>
-                        <strong>District:</strong> ${row.district || 'N/A'}<br>
-                        <strong>Class:</strong> <span style="color:${isDivider ? 'red' : 'blue'}; font-weight:bold;">${lampClass}</span>
-                    </div>
-                `);
-                
-                newMarkers.push(marker);
-                bounds.extend([row.lat, row.lon]);
-            });
-
-            markers.addLayers(newMarkers);
-
-            if (mapData.length > 0) {
-                map.flyToBounds(bounds, { padding: [50, 50], maxZoom: 18, duration: 1.5 });
-            }
-        }
-
-        // 4. Handle Indicator Click
-        window.toggleClassFilter = function(cls) {
-            // If already selected, clear it. Otherwise, set it to the clicked class.
-            currentClassFilter = (currentClassFilter === cls) ? null : cls;
-            updateDashboard();
-        };
-
-        // 5. Handle Single Search
-        let searchTimeout;
-        document.getElementById('searchInput').addEventListener('input', (e) => {
-            clearTimeout(searchTimeout);
-            searchTimeout = setTimeout(() => {
-                currentTextSearch = e.target.value.toLowerCase().trim();
-                updateDashboard();
-            }, 350); 
-        });
-
-        // 6. Handle Batch ID Search
-        document.getElementById('batchSearchBtn').addEventListener('click', () => {
-            const input = document.getElementById('batchInput').value;
-            if (!input.trim()) return;
-
-            currentBatchSearch = input.split(/[\n,\s]+/).map(id => id.trim().toLowerCase()).filter(id => id.length > 0);
-            if (currentBatchSearch.length === 0) return;
-
-            document.getElementById('clearBatchBtn').classList.remove('hidden');
-            updateDashboard();
-        });
-
-        // 7. Clear Batch Search
-        document.getElementById('clearBatchBtn').addEventListener('click', () => {
-            document.getElementById('batchInput').value = '';
-            document.getElementById('clearBatchBtn').classList.add('hidden');
-            currentBatchSearch = [];
-            updateDashboard();
-        });
-    </script>
-</body>
-</html>
+                const borderClass = isSelected ? `border-2 border-${baseColor}-400 bg-${baseColor}-900/30` :
