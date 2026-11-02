@@ -4,353 +4,202 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>HK Lamppost Dashboard</title>
-    
-    <!-- Tailwind CSS -->
+    <!-- Tailwind CSS for styling -->
     <script src="https://cdn.tailwindcss.com"></script>
-    
-    <!-- Leaflet & MarkerCluster CSS -->
+    <!-- Leaflet CSS & JS for Mapping -->
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
-    <link rel="stylesheet" href="https://unpkg.com/leaflet.markercluster@1.5.3/dist/MarkerCluster.css" />
-    <link rel="stylesheet" href="https://unpkg.com/leaflet.markercluster@1.5.3/dist/MarkerCluster.Default.css" />
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+    <!-- Leaflet MarkerCluster CSS & JS for handling 145k points -->
+    <link rel="stylesheet" href="https://unpkg.com/leaflet.markercluster@1.4.1/dist/MarkerCluster.css" />
+    <link rel="stylesheet" href="https://unpkg.com/leaflet.markercluster@1.4.1/dist/MarkerCluster.Default.css" />
+    <script src="https://unpkg.com/leaflet.markercluster@1.4.1/dist/leaflet.markercluster.js"></script>
+    <!-- PapaParse for reading the CSV -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.4.1/papaparse.min.js"></script>
     
     <style>
-        /* Custom UI Styles */
-        body, html { margin: 0; padding: 0; height: 100%; width: 100%; }
-        
-        /* Map Customizations */
-        .leaflet-popup-content-wrapper {
-            background-color: #1e293b; /* slate-800 */
-            color: #f8fafc; /* slate-50 */
-            border-radius: 8px;
-            box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.5);
-            border: 1px solid #334155; /* slate-700 */
-        }
-        .leaflet-popup-tip { background-color: #1e293b; border: 1px solid #334155; }
-        .leaflet-container { background-color: #020617; /* slate-950 */ }
-        
-        /* Marker Cluster Customizations */
-        .marker-cluster { background-clip: padding-box; border-radius: 20px; }
-        .marker-cluster div {
-            width: 30px; height: 30px; margin-left: 5px; margin-top: 5px;
-            text-align: center; border-radius: 15px; font: 12px "Inter", sans-serif;
-            color: #fff; font-weight: bold; line-height: 30px;
-        }
-        .marker-cluster-small { background-color: rgba(16, 185, 129, 0.6); }
-        .marker-cluster-small div { background-color: rgba(16, 185, 129, 0.9); }
-        .marker-cluster-medium { background-color: rgba(245, 158, 11, 0.6); }
-        .marker-cluster-medium div { background-color: rgba(245, 158, 11, 0.9); }
-        .marker-cluster-large { background-color: rgba(239, 68, 68, 0.6); }
-        .marker-cluster-large div { background-color: rgba(239, 68, 68, 0.9); }
-
-        /* Custom scrollbar for sidebar */
-        .custom-scrollbar::-webkit-scrollbar { width: 6px; }
-        .custom-scrollbar::-webkit-scrollbar-track { background: transparent; }
-        .custom-scrollbar::-webkit-scrollbar-thumb { background-color: #475569; border-radius: 10px; }
+        html, body { margin: 0; padding: 0; height: 100%; background: #111827; color: white; font-family: sans-serif; }
+        #app { display: flex; height: 100vh; width: 100vw; }
+        #sidebar { width: 350px; background: #1f2937; padding: 20px; display: flex; flex-direction: column; gap: 20px; overflow-y: auto; z-index: 1000; box-shadow: 2px 0 10px rgba(0,0,0,0.5); }
+        #map { flex-grow: 1; height: 100%; background: #000; z-index: 1; }
+        .indicator { background: #374151; padding: 15px; border-radius: 8px; text-align: center; border: 1px solid #4b5563; }
+        .indicator-value { font-size: 1.5rem; font-weight: bold; color: #60a5fa; }
+        .indicator-label { font-size: 0.8rem; color: #9ca3af; text-transform: uppercase; margin-top: 5px; }
+        .leaflet-popup-content { color: #111827; } /* Make popup text dark for readability */
     </style>
 </head>
-<body class="flex flex-col md:flex-row h-screen w-full bg-slate-950 text-slate-200 font-sans overflow-hidden">
-
-    <!-- SIDEBAR -->
-    <div class="w-full md:w-96 flex-shrink-0 bg-slate-900 border-r border-slate-800 flex flex-col h-full overflow-y-auto z-20 shadow-2xl relative custom-scrollbar">
-        <div class="p-6 flex flex-col gap-6">
+<body>
+    <div id="app">
+        <div id="sidebar">
+            <h1 class="text-xl font-bold border-b border-gray-600 pb-2">HK Lamppost Map</h1>
             
-            <!-- Header -->
+            <!-- Status Indicator -->
+            <div id="status" class="text-sm text-yellow-400 font-semibold animate-pulse">
+                Downloading dataset... please wait.
+            </div>
+            
+            <!-- Search Bar -->
             <div>
-                <h1 class="text-2xl font-bold text-white tracking-tight flex items-center gap-2">
-                    <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="text-emerald-400"><path d="M20 10c0 6-8 12-8 12s-8-6-8-12a8 8 0 0 1 16 0Z"/><circle cx="12" cy="10" r="3"/></svg>
-                    HK Lamppost Map
-                </h1>
-                <p class="text-sm text-slate-400 mt-1">Interactive Dashboard & Explorer</p>
+                <label class="block text-sm font-medium text-gray-400 mb-1">Search Database</label>
+                <input type="text" id="searchInput" placeholder="Type ID, Street, or District..." 
+                       class="w-full p-2 rounded bg-gray-700 border border-gray-600 text-white placeholder-gray-400 focus:outline-none focus:border-blue-500 transition-colors" disabled>
             </div>
-
-            <!-- Upload Section -->
-            <div class="bg-slate-800/50 p-4 rounded-xl border border-slate-700/50">
-                <label class="block text-sm font-medium text-slate-300 mb-2">Upload Dataset (CSV)</label>
-                <div class="relative w-full h-12">
-                    <input type="file" id="csv-upload" accept=".csv" class="absolute inset-0 w-full h-full opacity-0 cursor-pointer z-10" />
-                    <div class="absolute inset-0 flex items-center justify-center bg-slate-700 border border-slate-600 rounded-lg text-sm text-slate-300 hover:bg-slate-600 transition-colors pointer-events-none">
-                        <span id="upload-text" class="flex items-center gap-2">
-                            <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" x2="12" y1="3" y2="15"/></svg>
-                            Select CSV File
-                        </span>
-                    </div>
+            
+            <!-- Indicators Grid -->
+            <div>
+                <h2 class="text-sm font-semibold text-gray-400 uppercase tracking-wider mb-2">Class Summary (Top 4)</h2>
+                <div class="grid grid-cols-2 gap-3" id="indicators">
+                    <!-- Indicators injected here by JS -->
                 </div>
-            </div>
-
-            <!-- Loading State -->
-            <div id="loading-indicator" class="hidden flex-col items-center justify-center py-4 text-emerald-400 gap-2">
-                <svg class="animate-spin h-6 w-6" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path></svg>
-                <span class="text-sm font-medium" id="loading-text">Processing data...</span>
-            </div>
-
-            <!-- Controls & Indicators (Hidden until data is loaded) -->
-            <div id="dashboard-controls" class="hidden flex-col gap-6">
-                
-                <!-- Search Bar -->
-                <div>
-                    <label class="block text-sm font-medium text-slate-300 mb-2">Search Lampposts</label>
-                    <div class="relative">
-                        <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="absolute left-3 top-1/2 -translate-y-1/2 text-slate-500"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/></svg>
-                        <input type="text" id="search-input" placeholder="ID, Street, or District..." 
-                            class="w-full bg-slate-950 border border-slate-700 rounded-lg pl-9 pr-4 py-2.5 text-sm text-slate-200 focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:border-transparent transition-all placeholder:text-slate-600" />
-                    </div>
-                </div>
-
-                <!-- Summary Meta -->
-                <div class="flex items-center justify-between text-sm">
-                    <span class="text-slate-400">Visible Results</span>
-                    <span id="visible-count" class="font-bold text-emerald-400 text-lg">0</span>
-                </div>
-
-                <!-- Top 4 Classes Indicators -->
-                <div>
-                    <h2 class="text-xs font-bold text-slate-500 uppercase tracking-wider mb-3">Top Lamppost Classes</h2>
-                    <div id="indicators-grid" class="grid grid-cols-2 gap-3">
-                        <!-- Indicators will be dynamically injected here -->
-                    </div>
-                </div>
-
             </div>
         </div>
+        
+        <div id="map"></div>
     </div>
 
-    <!-- MAP CONTAINER -->
-    <div id="map" class="flex-grow relative z-0 h-full w-full bg-slate-950"></div>
-
-    <!-- Leaflet & MarkerCluster JS -->
-    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
-    <script src="https://unpkg.com/leaflet.markercluster@1.5.3/dist/leaflet.markercluster.js"></script>
-    
-    <!-- PapaParse for CSV processing -->
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.4.1/papaparse.min.js"></script>
-
     <script>
-        // Global State Variables
-        let globalData = [];
-        let filteredData = [];
-        let mapInstance = null;
-        let clusterGroup = null;
-        let searchTimeout = null;
+        // 1. Initialize the Map
+        const map = L.map('map', {
+            maxZoom: 24, // Extreme zoom in capability
+            zoomControl: false 
+        }).setView([22.3193, 114.1694], 11);
+        
+        // Move zoom control to avoid overlapping with sidebar
+        L.control.zoom({ position: 'topright' }).addTo(map);
 
-        // Wait for DOM and external scripts to load
-        document.addEventListener('DOMContentLoaded', () => {
-            initMap();
-            setupEventListeners();
+        // 2. Add LandsD Basemap layer
+        L.tileLayer('https://mapapi.geodata.gov.hk/gs/api/v1.0.0/xyz/basemap/wgs84/{z}/{x}/{y}.png', {
+            maxNativeZoom: 19,
+            maxZoom: 24,
+            attribution: '&copy; Lands Department'
+        }).addTo(map);
+
+        // 3. Add LandsD Traditional Chinese Labels layer
+        L.tileLayer('https://mapapi.geodata.gov.hk/gs/api/v1.0.0/xyz/label/hk/tc/wgs84/{z}/{x}/{y}.png', {
+            maxNativeZoom: 19,
+            maxZoom: 24
+        }).addTo(map);
+
+        // 4. Set up cluster group for performance
+        const markers = L.markerClusterGroup({
+            chunkedLoading: true,
+            maxClusterRadius: 60,
+            disableClusteringAtZoom: 18 // Break apart into individual points when zoomed in
         });
+        map.addLayer(markers);
 
-        // 1. Initialize Map
-        function initMap() {
-            // High zoom capacity required (maxZoom: 24)
-            mapInstance = L.map('map', {
-                zoomControl: true,
-                maxZoom: 24
-            }).setView([22.3193, 114.1694], 11);
+        let globalData = [];
 
-            // Move zoom control to bottom right to avoid overlap with mobile sidebars
-            mapInstance.zoomControl.setPosition('bottomright');
-
-            // Add LandsD Base Map
-            L.tileLayer('https://mapapi.geodata.gov.hk/gs/api/v1.0.0/xyz/basemap/wgs84/{z}/{x}/{y}.png', {
-                attribution: 'Map Data &copy; <a href="https://geodata.gov.hk" target="_blank">LandsD</a>',
-                maxNativeZoom: 19,
-                maxZoom: 24
-            }).addTo(mapInstance);
-
-            // Add LandsD Traditional Chinese Labels
-            L.tileLayer('https://mapapi.geodata.gov.hk/gs/api/v1.0.0/xyz/label/hk/tc/wgs84/{z}/{x}/{y}.png', {
-                maxNativeZoom: 19,
-                maxZoom: 24
-            }).addTo(mapInstance);
-
-            // Initialize MarkerCluster Group
-            clusterGroup = L.markerClusterGroup({
-                chunkedLoading: true,      // Essential for large datasets (100k+ points)
-                maxClusterRadius: 50,
-                disableClusteringAtZoom: 18 // Breaks apart to view individual posts at high zoom
-            });
-            mapInstance.addLayer(clusterGroup);
-        }
-
-        // 2. Setup Event Listeners
-        function setupEventListeners() {
-            // File Upload Listener
-            const uploadInput = document.getElementById('csv-upload');
-            uploadInput.addEventListener('change', (e) => {
-                const file = e.target.files[0];
-                if (!file) return;
-
-                // Update UI for loading
-                document.getElementById('upload-text').innerText = file.name;
-                document.getElementById('loading-indicator').classList.remove('hidden');
-                document.getElementById('loading-indicator').classList.add('flex');
-                document.getElementById('dashboard-controls').classList.add('hidden');
+        // 5. Automatically fetch the CSV file on load
+        fetch('hk_lamppost_145k_classified.csv')
+            .then(response => {
+                if (!response.ok) throw new Error("CSV file not found on server.");
+                return response.text();
+            })
+            .then(csvText => {
+                document.getElementById('status').innerText = "Parsing data...";
+                document.getElementById('status').classList.replace('text-yellow-400', 'text-blue-400');
                 
-                // Parse CSV using PapaParse
-                Papa.parse(file, {
+                Papa.parse(csvText, {
                     header: true,
+                    dynamicTyping: true,
                     skipEmptyLines: true,
-                    dynamicTyping: true, // Auto-convert numbers
-                    complete: (results) => {
-                        processRawData(results.data);
-                    },
-                    error: (err) => {
-                        console.error("PapaParse Error:", err);
-                        alert("Error parsing CSV file.");
-                        hideLoading();
+                    complete: function(results) {
+                        // Filter out rows missing coordinates
+                        globalData = results.data.filter(row => row.lat && row.lon);
+                        
+                        // Update UI state
+                        document.getElementById('status').style.display = 'none';
+                        document.getElementById('searchInput').disabled = false;
+                        
+                        // Initial render
+                        renderDashboard(globalData);
                     }
                 });
+            })
+            .catch(err => {
+                const statusDiv = document.getElementById('status');
+                statusDiv.classList.replace('text-yellow-400', 'text-red-500');
+                statusDiv.classList.remove('animate-pulse');
+                statusDiv.innerHTML = `<strong>Error:</strong> Could not load CSV. Ensure 'hk_lamppost_145k_classified.csv' is uploaded to your GitHub repository in the exact same folder as this HTML file.`;
+                console.error(err);
             });
 
-            // Debounced Search Listener
-            const searchInput = document.getElementById('search-input');
-            searchInput.addEventListener('input', (e) => {
-                clearTimeout(searchTimeout);
-                const query = e.target.value.toLowerCase().trim();
+        // 6. Main render function for map points and indicators
+        function renderDashboard(data) {
+            markers.clearLayers();
+            let bounds = L.latLngBounds();
+            const classCounts = {};
+            const newMarkers = [];
+
+            data.forEach(row => {
+                // Tally the classes (Column F)
+                const lampClass = row.class || 'UNKNOWN';
+                classCounts[lampClass] = (classCounts[lampClass] || 0) + 1;
+
+                // Build individual markers
+                const marker = L.circleMarker([row.lat, row.lon], {
+                    radius: 5,
+                    color: '#2563eb',
+                    fillColor: '#3b82f6',
+                    fillOpacity: 0.9,
+                    weight: 1
+                }).bindPopup(`
+                    <div style="font-family: sans-serif;">
+                        <strong>ID:</strong> ${row.lamp_post_id}<br>
+                        <strong>Street:</strong> ${row.street || 'N/A'}<br>
+                        <strong>District:</strong> ${row.district || 'N/A'}<br>
+                        <strong>Class:</strong> ${lampClass}
+                    </div>
+                `);
                 
-                searchTimeout = setTimeout(() => {
-                    executeSearch(query);
-                }, 300); // 300ms debounce
+                newMarkers.push(marker);
+                bounds.extend([row.lat, row.lon]);
             });
-        }
 
-        // 3. Process Initial Data
-        function processRawData(rawData) {
-            // Filter out rows missing latitude or longitude
-            globalData = rawData.filter(row => row.lat && row.lon && !isNaN(row.lat) && !isNaN(row.lon));
-            
-            if (globalData.length === 0) {
-                alert("No valid coordinate data (lat/lon) found in the CSV.");
-                hideLoading();
-                return;
+            // Add all newly created markers to the cluster group at once
+            markers.addLayers(newMarkers);
+
+            // Auto-Zoom: Fit the map smoothly to the currently visible points
+            if (data.length > 0) {
+                map.flyToBounds(bounds, { padding: [50, 50], maxZoom: 18, duration: 1.5 });
             }
 
-            // Initially, filtered data is all data
-            filteredData = [...globalData];
-            
-            // Show dashboard controls and render the map
-            document.getElementById('dashboard-controls').classList.remove('hidden');
-            document.getElementById('dashboard-controls').classList.add('flex');
-            hideLoading();
-            
-            renderDashboard();
-        }
-
-        // 4. Search Filter Logic
-        function executeSearch(query) {
-            if (!query) {
-                filteredData = [...globalData];
-            } else {
-                filteredData = globalData.filter(row => {
-                    const idStr = String(row.lamp_post_id || '').toLowerCase();
-                    const streetStr = String(row.street || '').toLowerCase();
-                    const distStr = String(row.district || '').toLowerCase();
-                    
-                    return idStr.includes(query) || streetStr.includes(query) || distStr.includes(query);
-                });
-            }
-            renderDashboard();
-        }
-
-        // 5. Core Render Function (Markers & Indicators)
-        function renderDashboard() {
-            // Show small rendering loader if needed
-            document.getElementById('visible-count').innerText = "Loading...";
-
-            // Use setTimeout to allow the browser to paint UI updates before heavy processing
-            setTimeout(() => {
-                clusterGroup.clearLayers();
-                let classCounts = {};
-                let bounds = L.latLngBounds();
-                let markersArray = [];
-
-                // Create customized DivIcon structure (better performance than loading images)
-                const createCustomIcon = (cls) => {
-                    return L.divIcon({
-                        className: 'custom-leaflet-marker',
-                        html: `<div style="background-color:#10b981; width:12px; height:12px; border-radius:50%; border:2px solid #fff; box-shadow:0 0 4px rgba(0,0,0,0.5);"></div>`,
-                        iconSize: [12, 12],
-                        iconAnchor: [6, 6]
-                    });
-                };
-
-                // Single pass to aggregate counts, define bounds, and build marker array
-                filteredData.forEach(row => {
-                    const cls = row.class || 'Unknown';
-                    classCounts[cls] = (classCounts[cls] || 0) + 1;
-                    
-                    const lat = parseFloat(row.lat);
-                    const lon = parseFloat(row.lon);
-
-                    const popupHTML = `
-                        <div style="min-width: 180px; padding: 4px;">
-                            <div style="display:flex; align-items:center; gap:8px; margin-bottom:8px; padding-bottom:8px; border-bottom:1px solid #334155;">
-                                <div style="width:10px; height:10px; border-radius:50%; background-color:#10b981;"></div>
-                                <strong style="text-transform:uppercase; font-size:12px; color:#f8fafc;">${cls}</strong>
-                            </div>
-                            <div style="font-size:12px; color:#cbd5e1; display:flex; flex-direction:column; gap:6px;">
-                                <div><span style="font-size:10px; color:#64748b; text-transform:uppercase; display:block;">ID</span>${row.lamp_post_id || 'N/A'}</div>
-                                <div><span style="font-size:10px; color:#64748b; text-transform:uppercase; display:block;">District</span>${row.district || 'N/A'}</div>
-                                <div><span style="font-size:10px; color:#64748b; text-transform:uppercase; display:block;">Street</span>${row.street || 'N/A'}</div>
-                            </div>
-                        </div>
-                    `;
-
-                    const marker = L.marker([lat, lon], { icon: createCustomIcon(cls) });
-                    marker.bindPopup(popupHTML);
-                    
-                    markersArray.push(marker);
-                    bounds.extend([lat, lon]);
-                });
-
-                // Add all markers to the cluster group at once (crucial for performance)
-                clusterGroup.addLayers(markersArray);
-
-                // Auto-Zoom to fit the filtered bounds
-                if (markersArray.length > 0) {
-                    mapInstance.flyToBounds(bounds, { 
-                        padding: [50, 50], 
-                        maxZoom: 18, 
-                        duration: 0.8 
-                    });
-                } else {
-                    // Default back to HK center if search yields no results
-                    mapInstance.flyTo([22.3193, 114.1694], 11);
-                }
-
-                // Update UI Counters and Indicators
-                document.getElementById('visible-count').innerText = filteredData.length.toLocaleString();
-                updateIndicators(classCounts);
-
-            }, 50); // Small delay to unblock main thread
-        }
-
-        // 6. Update Dynamic Top 4 Indicators
-        function updateIndicators(countsMap) {
-            // Sort classes by frequency in descending order
-            const sortedClasses = Object.entries(countsMap)
+            // Update the 4 Indicators in the sidebar
+            const sortedClasses = Object.entries(classCounts)
                 .sort((a, b) => b[1] - a[1])
-                .slice(0, 4); // Take top 4
+                .slice(0, 4);
 
-            const container = document.getElementById('indicators-grid');
-            
-            if (sortedClasses.length === 0) {
-                container.innerHTML = `<div class="col-span-2 text-sm text-slate-500 italic">No classes found.</div>`;
-                return;
-            }
-
-            container.innerHTML = sortedClasses.map(([className, count]) => `
-                <div class="bg-slate-800/80 p-3 rounded-lg border border-slate-700/50 flex flex-col justify-between h-20">
-                    <span class="text-xs font-semibold text-slate-400 truncate w-full" title="${className}">${className}</span>
-                    <span class="text-xl font-bold text-slate-100">${count.toLocaleString()}</span>
+            const indicatorsContainer = document.getElementById('indicators');
+            indicatorsContainer.innerHTML = sortedClasses.map(([cls, count]) => `
+                <div class="indicator">
+                    <div class="indicator-value">${count.toLocaleString()}</div>
+                    <div class="indicator-label">${cls}</div>
                 </div>
             `).join('');
         }
 
-        // Utility
-        function hideLoading() {
-            document.getElementById('loading-indicator').classList.remove('flex');
-            document.getElementById('loading-indicator').classList.add('hidden');
-        }
+        // 7. Handle Search with Debouncing
+        let searchTimeout;
+        document.getElementById('searchInput').addEventListener('input', (e) => {
+            clearTimeout(searchTimeout);
+            const query = e.target.value.toLowerCase().trim();
+            
+            searchTimeout = setTimeout(() => {
+                if (!query) {
+                    renderDashboard(globalData);
+                    return;
+                }
+                
+                const filtered = globalData.filter(row => {
+                    const idStr = String(row.lamp_post_id || '').toLowerCase();
+                    const streetStr = String(row.street || '').toLowerCase();
+                    const districtStr = String(row.district || '').toLowerCase();
+                    return idStr.includes(query) || streetStr.includes(query) || districtStr.includes(query);
+                });
+                
+                renderDashboard(filtered);
+            }, 350); 
+        });
     </script>
 </body>
 </html>
