@@ -4,26 +4,20 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
     <title>HK Lamppost Mobile</title>
-    <!-- Tailwind CSS for styling -->
     <script src="https://cdn.tailwindcss.com"></script>
-    <!-- Leaflet CSS & JS for Mapping -->
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
     <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
-    <!-- Leaflet MarkerCluster CSS & JS -->
     <link rel="stylesheet" href="https://unpkg.com/leaflet.markercluster@1.4.1/dist/MarkerCluster.css" />
     <link rel="stylesheet" href="https://unpkg.com/leaflet.markercluster@1.4.1/dist/MarkerCluster.Default.css" />
     <script src="https://unpkg.com/leaflet.markercluster@1.4.1/dist/leaflet.markercluster.js"></script>
-    <!-- PapaParse for reading CSV -->
     <script src="https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.4.1/papaparse.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/proj4js/2.9.0/proj4.js"></script>
     
     <style>
         html, body { margin: 0; padding: 0; height: 100%; background: #111827; color: white; font-family: sans-serif; overflow: hidden; }
         #app { display: flex; height: 100vh; width: 100vw; position: relative; }
-        
-        /* Map Area */
         #map { flex-grow: 1; height: 100%; background: #000; z-index: 1; width: 100%; }
 
-        /* Mobile Hamburger Menu Button */
         #menuToggle {
             position: absolute; top: 15px; left: 15px; z-index: 2000;
             background: #2563eb; color: white; border: none; padding: 10px 16px;
@@ -31,9 +25,8 @@
             box-shadow: 0 4px 6px rgba(0,0,0,0.5); transition: background 0.2s;
         }
         #menuToggle:hover { background: #1d4ed8; }
-        @media (min-width: 768px) { #menuToggle { display: none; } } /* Hide on desktop */
+        @media (min-width: 768px) { #menuToggle { display: none; } } 
 
-        /* Responsive Sidebar Drawer */
         #sidebar { 
             background: #1f2937; padding: 20px; display: flex; flex-direction: column; gap: 15px; 
             overflow-y: auto; z-index: 3000; box-shadow: 2px 0 10px rgba(0,0,0,0.5); 
@@ -41,18 +34,14 @@
             transform: translateX(-100%); transition: transform 0.3s ease-in-out;
         }
         #sidebar.open { transform: translateX(0); }
-        
-        /* Keep sidebar permanently open and fixed on Desktop */
         @media (min-width: 768px) {
             #sidebar { position: relative; transform: translateX(0); width: 360px; max-width: 360px; }
         }
 
-        /* Custom Scrollbar */
         #sidebar::-webkit-scrollbar { width: 6px; }
         #sidebar::-webkit-scrollbar-track { background: #1f2937; }
         #sidebar::-webkit-scrollbar-thumb { background: #4b5563; border-radius: 3px; }
         
-        /* Indicators and Popups */
         .indicator { background: #374151; padding: 12px; border-radius: 8px; text-align: center; transition: all 0.2s; }
         .indicator:hover { transform: translateY(-2px); box-shadow: 0 4px 6px rgba(0,0,0,0.3); cursor: pointer; }
         .indicator-value { font-size: 1.25rem; font-weight: bold; }
@@ -69,14 +58,11 @@
 </head>
 <body>
     <div id="app">
-        <!-- Floating Mobile Menu Button -->
         <button id="menuToggle">☰ Search & Filters</button>
 
-        <!-- Sidebar / Drawer -->
         <div id="sidebar">
             <div class="flex justify-between items-center border-b border-gray-600 pb-2">
                 <h1 class="text-xl font-bold">HK Lamppost Map</h1>
-                <!-- Close Button (Mobile Only) -->
                 <button id="closeMenuBtn" class="md:hidden text-gray-400 hover:text-white text-3xl font-bold leading-none">&times;</button>
             </div>
             
@@ -84,12 +70,14 @@
                 Downloading dataset... please wait.
             </div>
             
+            <!-- SINGLE SEARCH -->
             <div>
-                <label class="block text-sm font-medium text-gray-400 mb-1">Search ID or Location</label>
+                <label class="block text-sm font-medium text-gray-400 mb-1">Search Database (Single)</label>
                 <input type="text" id="searchInput" placeholder="Type ID, Street, or District..." 
                        class="w-full p-2.5 rounded bg-gray-700 border border-gray-600 text-white placeholder-gray-400 focus:outline-none focus:border-blue-500 text-base" disabled>
             </div>
 
+            <!-- FILTERS -->
             <div>
                 <label class="block text-sm font-medium text-gray-400 mb-1">Network Filters</label>
                 <div class="flex flex-col gap-2">
@@ -105,12 +93,13 @@
                 </div>
             </div>
 
-            <div class="hidden md:block">
-                <label class="block text-sm font-medium text-gray-400 mb-1">Batch ID Check (Paste List)</label>
-                <textarea id="batchInput" rows="2" placeholder="Paste multiple IDs..." 
+            <!-- SMART BATCH SEARCH (NEW SET LOGIC) -->
+            <div>
+                <label class="block text-sm font-medium text-blue-400 mb-1">Smart Batch Search</label>
+                <textarea id="batchInput" rows="3" placeholder="Paste Lamppost IDs here (auto-detects any 5-digit code)..." 
                           class="w-full p-2 rounded bg-gray-700 border border-gray-600 text-white placeholder-gray-400 focus:outline-none focus:border-blue-500" disabled></textarea>
                 <div class="flex gap-2 mt-2">
-                    <button id="batchSearchBtn" class="flex-1 bg-blue-600 hover:bg-blue-700 text-white font-bold py-1.5 px-3 rounded text-sm disabled:opacity-50" disabled>Check IDs</button>
+                    <button id="batchSearchBtn" class="flex-1 bg-blue-600 hover:bg-blue-700 text-white font-bold py-1.5 px-3 rounded text-sm disabled:opacity-50" disabled>Scan & Filter</button>
                     <button id="clearBatchBtn" class="hidden flex-1 bg-gray-600 hover:bg-gray-700 text-white font-bold py-1.5 px-3 rounded text-sm">Clear Batch</button>
                 </div>
             </div>
@@ -132,12 +121,12 @@
     </div>
 
     <script>
-        // 1. Mobile Sidebar Toggle Logic
+        proj4.defs("EPSG:2326","+proj=tmerc +lat_0=22.3121333333333 +lon_0=114.178555555556 +k=1 +x_0=836694.05 +y_0=819069.8 +ellps=intl +towgs84=-162.619,-276.959,-161.764,0.067753,-2.243649,-1.158828,-1.094246 +units=m +no_defs");
+
         const sidebar = document.getElementById('sidebar');
         document.getElementById('menuToggle').addEventListener('click', () => sidebar.classList.add('open'));
         document.getElementById('closeMenuBtn').addEventListener('click', () => sidebar.classList.remove('open'));
 
-        // 2. Map Setup
         const map = L.map('map', { maxZoom: 24, zoomControl: false, preferCanvas: true }).setView([22.3193, 114.1694], 11);
         L.control.zoom({ position: 'topright' }).addTo(map);
 
@@ -150,7 +139,7 @@
         let globalData = [];
         let currentMapData = [];
         let currentTextSearch = '';
-        let currentBatchSearch = [];
+        let currentBatchSearch = new Set(); // Upgraded to Set for O(1) matching
         let currentClassFilter = null;
         let currentRegionFilter = '';
         let currentExchFilter = '';
@@ -212,10 +201,12 @@
         function updateDashboard() {
             let baseData = globalData;
             
+            // Dropdowns
             if (currentRegionFilter) baseData = baseData.filter(row => row.Region === currentRegionFilter);
             if (currentExchFilter) baseData = baseData.filter(row => row.EXCHCODE === currentExchFilter);
             if (currentUnitFilter) baseData = baseData.filter(row => row.Unit === currentUnitFilter);
 
+            // Single Search String
             if (currentTextSearch) {
                 baseData = baseData.filter(row => {
                     const idStr = String(row.lamp_post_id || '').toLowerCase();
@@ -224,8 +215,10 @@
                     return idStr.includes(currentTextSearch) || streetStr.includes(currentTextSearch) || districtStr.includes(currentTextSearch);
                 });
             }
-            if (currentBatchSearch.length > 0) {
-                baseData = baseData.filter(row => currentBatchSearch.includes(String(row.lamp_post_id || '').toLowerCase()));
+
+            // Smart Batch Lookup (using highly optimized O(1) Set)
+            if (currentBatchSearch && currentBatchSearch.size > 0) {
+                baseData = baseData.filter(row => currentBatchSearch.has(String(row.lamp_post_id || '').trim().toLowerCase()));
             }
 
             const classCounts = {};
@@ -274,10 +267,14 @@
                     const fillColor = isDivider ? '#f87171' : (isBridge ? '#c084fc' : '#3b82f6');
                     const streetViewUrl = `https://www.google.com/maps/@?api=1&map_action=pano&viewpoint=${row.lat},${row.lon}`;
 
+                    let hk80 = proj4("EPSG:4326", "EPSG:2326", [row.lon, row.lat]);
+                    let hk80_x = hk80[0].toFixed(1);
+                    let hk80_y = hk80[1].toFixed(1);
+
                     marker = L.circleMarker([row.lat, row.lon], {
                         radius: 5, color: markerColor, fillColor: fillColor, fillOpacity: 0.9, weight: 1
                     }).bindPopup(`
-                        <div style="font-family: sans-serif; min-width: 200px;">
+                        <div style="font-family: sans-serif; min-width: 210px;">
                             <strong style="font-size: 1.1rem; color: #1d4ed8;">${row.lamp_post_id}</strong><br>
                             <strong>Region:</strong> ${row.Region || 'N/A'} | <strong>EXCH:</strong> ${row.EXCHCODE || 'N/A'}<br>
                             <strong>Unit:</strong> ${row.Unit || 'N/A'}<br>
@@ -285,6 +282,12 @@
                             <strong>Street:</strong> ${row.street || 'N/A'}<br>
                             <strong>District:</strong> ${row.district || 'N/A'}<br>
                             <strong>Class:</strong> <span style="color:${isDivider ? 'red' : (isBridge ? 'purple' : 'blue')}; font-weight:bold;">${formatClassName(lampClass)}</span>
+                            
+                            <div style="background: #f3f4f6; padding: 6px; border-radius: 4px; font-size: 0.75rem; color: #4b5563; margin-top: 8px;">
+                                <div><strong style="color: #374151;">WGS84:</strong> ${row.lat.toFixed(5)}, ${row.lon.toFixed(5)}</div>
+                                <div style="margin-top: 2px;"><strong style="color: #374151;">HK1980:</strong> ${hk80_x}, ${hk80_y}</div>
+                            </div>
+
                             <a href="${streetViewUrl}" target="_blank" class="street-view-btn">🗺️ Open in Street View</a>
                         </div>
                     `);
@@ -296,7 +299,7 @@
 
             markers.addLayers(newMarkers);
 
-            if (currentMapData.length > 0 && (currentTextSearch || currentBatchSearch.length > 0 || currentClassFilter || currentRegionFilter || currentExchFilter || currentUnitFilter)) {
+            if (currentMapData.length > 0 && (currentTextSearch || (currentBatchSearch && currentBatchSearch.size > 0) || currentClassFilter || currentRegionFilter || currentExchFilter || currentUnitFilter)) {
                 map.flyToBounds(bounds, { padding: [50, 50], maxZoom: 18, duration: 1.5 });
             }
         }
@@ -315,29 +318,52 @@
             }, 350); 
         });
 
-        document.getElementById('batchSearchBtn').addEventListener('click', () => {
-            const input = document.getElementById('batchInput').value;
-            if (!input.trim()) return;
-            currentBatchSearch = input.split(/[\n,\s]+/).map(id => id.trim().toLowerCase()).filter(id => id.length > 0);
-            if (currentBatchSearch.length === 0) return;
-            document.getElementById('clearBatchBtn').classList.remove('hidden');
+        // --- NEW O(1) SMART BATCH SET PARSING LOGIC ---
+        document.getElementById('batchInput').addEventListener('input', (e) => {
+            const input = e.target.value;
+            
+            // Match EXACTLY 5 alphanumeric characters bounded by spaces or line breaks
+            const matches = input.match(/\b[a-zA-Z0-9]{5}\b/g);
+            
+            if (matches && matches.length > 0) {
+                // Instantly load matches into an indexed Set for hyper-fast comparison
+                currentBatchSearch = new Set(matches.map(id => id.toLowerCase()));
+                document.getElementById('clearBatchBtn').classList.remove('hidden');
+            } else {
+                currentBatchSearch = new Set();
+                if (!input.trim()) {
+                    document.getElementById('clearBatchBtn').classList.add('hidden');
+                }
+            }
             updateDashboard();
+        });
+
+        document.getElementById('batchSearchBtn').addEventListener('click', () => {
+            const event = new Event('input');
+            document.getElementById('batchInput').dispatchEvent(event);
         });
 
         document.getElementById('clearBatchBtn').addEventListener('click', () => {
             document.getElementById('batchInput').value = '';
             document.getElementById('clearBatchBtn').classList.add('hidden');
-            currentBatchSearch = [];
+            currentBatchSearch = new Set();
             updateDashboard();
         });
 
         document.getElementById('exportBtn').addEventListener('click', () => {
             if (currentMapData.length === 0) return alert("No data available to export.");
-            const exportData = currentMapData.map(row => ({
-                Lamppost_ID: row.lamp_post_id, Region: row.Region || '', Exchange: row.EXCHCODE || '',
-                Unit: row.Unit || '', Street: row.street || '', District: row.district || '',
-                Class: row.class || '', Latitude: row.lat, Longitude: row.lon
-            }));
+            const exportData = currentMapData.map(row => {
+                let hk80 = proj4("EPSG:4326", "EPSG:2326", [row.lon, row.lat]);
+                return {
+                    Lamppost_ID: row.lamp_post_id, Region: row.Region || '', Exchange: row.EXCHCODE || '',
+                    Unit: row.Unit || '', Street: row.street || '', District: row.district || '',
+                    Class: row.class || '', 
+                    WGS84_Lat: row.lat.toFixed(6), 
+                    WGS84_Lon: row.lon.toFixed(6),
+                    HK1980_X: hk80[0].toFixed(2), 
+                    HK1980_Y: hk80[1].toFixed(2)
+                };
+            });
             const csv = Papa.unparse(exportData);
             const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
             const link = document.createElement("a");
