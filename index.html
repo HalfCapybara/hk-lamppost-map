@@ -231,4 +231,184 @@
             }
 
             if (currentBatchSearch && currentBatchSearch.size > 0) {
-                baseData = baseData.filter(row => currentBatchSearch
+                baseData = baseData.filter(row => currentBatchSearch.has(String(row.lamp_post_id || '').trim().toLowerCase()));
+            }
+
+            // 1. Calculate Class Summary
+            const classCounts = {};
+            baseData.forEach(row => {
+                const lampClass = row.class || 'UNKNOWN';
+                classCounts[lampClass] = (classCounts[lampClass] || 0) + 1;
+            });
+            const sortedClasses = Object.entries(classCounts).sort((a, b) => b[1] - a[1]).slice(0, 4);
+
+            document.getElementById('classIndicators').innerHTML = sortedClasses.map(([cls, count]) => {
+                const isSelected = currentClassFilter === cls;
+                const isDivider = cls.includes('CENTRAL_DIVIDER');
+                const isBridge = cls === 'ON_BRIDGE';
+                const baseColor = isDivider ? 'red' : (isBridge ? 'purple' : 'blue');
+                const textClass = isDivider ? 'text-red-400' : (isBridge ? 'text-purple-400' : 'text-blue-400');
+                const borderClass = isSelected ? `border-2 border-${baseColor}-400 bg-${baseColor}-900/30` : `border border-gray-600`;
+
+                return `
+                    <div class="indicator clickable ${borderClass}" onclick="window.toggleClassFilter('${cls}')">
+                        <div class="indicator-value ${textClass}">${count.toLocaleString()}</div>
+                        <div class="indicator-label">${formatClassName(cls)}</div>
+                    </div>
+                `;
+            }).join('');
+
+            // Apply Class Filter to final Map Data
+            currentMapData = baseData;
+            if (currentClassFilter) {
+                currentMapData = currentMapData.filter(row => row.class === currentClassFilter);
+            }
+
+            // 2. Calculate Region Summary (Based on currentMapData)
+            const regionCounts = {};
+            currentMapData.forEach(row => {
+                const reg = row.Region || 'N/A';
+                regionCounts[reg] = (regionCounts[reg] || 0) + 1;
+            });
+            const sortedRegions = Object.entries(regionCounts).sort((a, b) => b[1] - a[1]).slice(0, 4);
+            
+            document.getElementById('regionIndicators').innerHTML = sortedRegions.map(([reg, count]) => `
+                <div class="indicator border border-gray-700 bg-gray-800">
+                    <div class="indicator-value text-green-400">${count.toLocaleString()}</div>
+                    <div class="indicator-label">${reg}</div>
+                </div>
+            `).join('');
+
+            // 3. Calculate Unit Summary (Based on currentMapData)
+            const unitCounts = {};
+            currentMapData.forEach(row => {
+                const unit = row.Unit || 'N/A';
+                unitCounts[unit] = (unitCounts[unit] || 0) + 1;
+            });
+            const sortedUnits = Object.entries(unitCounts).sort((a, b) => b[1] - a[1]).slice(0, 4);
+            
+            document.getElementById('unitIndicators').innerHTML = sortedUnits.map(([unit, count]) => `
+                <div class="indicator border border-gray-700 bg-gray-800">
+                    <div class="indicator-value text-yellow-400">${count.toLocaleString()}</div>
+                    <div class="indicator-label">${unit}</div>
+                </div>
+            `).join('');
+
+            document.getElementById('exportCount').innerText = `(${currentMapData.length})`;
+
+            markers.clearLayers();
+            let bounds = L.latLngBounds();
+            const newMarkers = [];
+
+            currentMapData.forEach(row => {
+                let marker = markerCache.get(row._uid);
+                
+                if (!marker) {
+                    const lampClass = row.class || 'UNKNOWN';
+                    const isDivider = lampClass.includes('CENTRAL_DIVIDER');
+                    const isBridge = lampClass === 'ON_BRIDGE';
+                    const markerColor = isDivider ? '#ef4444' : (isBridge ? '#a855f7' : '#2563eb');
+                    const fillColor = isDivider ? '#f87171' : (isBridge ? '#c084fc' : '#3b82f6');
+                    const streetViewUrl = `https://www.google.com/maps/@?api=1&map_action=pano&viewpoint=${row.lat},${row.lon}`;
+
+                    let hk80 = proj4("EPSG:4326", "EPSG:2326", [row.lon, row.lat]);
+                    let hk80_x = hk80[0].toFixed(1);
+                    let hk80_y = hk80[1].toFixed(1);
+
+                    marker = L.circleMarker([row.lat, row.lon], {
+                        radius: 5, color: markerColor, fillColor: fillColor, fillOpacity: 0.9, weight: 1
+                    }).bindPopup(`
+                        <div style="font-family: sans-serif; min-width: 210px;">
+                            <strong style="font-size: 1.1rem; color: #1d4ed8;">${row.lamp_post_id}</strong><br>
+                            <strong>Region:</strong> ${row.Region || 'N/A'} | <strong>EXCH:</strong> ${row.EXCHCODE || 'N/A'}<br>
+                            <strong>Unit:</strong> ${row.Unit || 'N/A'}<br>
+                            <hr style="margin: 8px 0; border-top: 1px solid #ccc;">
+                            <strong>Street:</strong> ${row.street || 'N/A'}<br>
+                            <strong>District:</strong> ${row.district || 'N/A'}<br>
+                            <strong>Class:</strong> <span style="color:${isDivider ? 'red' : (isBridge ? 'purple' : 'blue')}; font-weight:bold;">${formatClassName(lampClass)}</span>
+                            
+                            <div style="background: #f3f4f6; padding: 6px; border-radius: 4px; font-size: 0.75rem; color: #4b5563; margin-top: 8px;">
+                                <div><strong style="color: #374151;">WGS84:</strong> ${row.lat.toFixed(5)}, ${row.lon.toFixed(5)}</div>
+                                <div style="margin-top: 2px;"><strong style="color: #374151;">HK1980:</strong> ${hk80_x}, ${hk80_y}</div>
+                            </div>
+
+                            <a href="${streetViewUrl}" target="_blank" class="street-view-btn">🗺️ Open in Street View</a>
+                        </div>
+                    `);
+                    markerCache.set(row._uid, marker);
+                }
+                newMarkers.push(marker);
+                bounds.extend([row.lat, row.lon]);
+            });
+
+            markers.addLayers(newMarkers);
+
+            if (currentMapData.length > 0 && (currentTextSearch || (currentBatchSearch && currentBatchSearch.size > 0) || currentClassFilter || currentRegionFilter || currentExchFilter || currentUnitFilter)) {
+                map.flyToBounds(bounds, { padding: [50, 50], maxZoom: 18, duration: 1.5 });
+            }
+        }
+
+        window.toggleClassFilter = function(cls) { currentClassFilter = (currentClassFilter === cls) ? null : cls; updateDashboard(); };
+        document.getElementById('regionFilter').addEventListener('change', (e) => { currentRegionFilter = e.target.value; updateDashboard(); });
+        document.getElementById('exchFilter').addEventListener('change', (e) => { currentExchFilter = e.target.value; updateDashboard(); });
+        document.getElementById('unitFilter').addEventListener('change', (e) => { currentUnitFilter = e.target.value; updateDashboard(); });
+
+        let searchTimeout;
+        document.getElementById('searchInput').addEventListener('input', (e) => {
+            clearTimeout(searchTimeout);
+            searchTimeout = setTimeout(() => {
+                currentTextSearch = e.target.value.toLowerCase().trim();
+                updateDashboard();
+            }, 350); 
+        });
+
+        document.getElementById('batchInput').addEventListener('input', (e) => {
+            const input = e.target.value;
+            const matches = input.match(/\b(?:[a-zA-Z][a-zA-Z0-9]{4,5}|[0-9][a-zA-Z0-9]{4})\b/g);
+            
+            if (matches && matches.length > 0) {
+                currentBatchSearch = new Set(matches.map(id => id.toLowerCase()));
+                document.getElementById('clearBatchBtn').classList.remove('hidden');
+            } else {
+                currentBatchSearch = new Set();
+                if (!input.trim()) {
+                    document.getElementById('clearBatchBtn').classList.add('hidden');
+                }
+            }
+            updateDashboard();
+        });
+
+        document.getElementById('clearBatchBtn').addEventListener('click', () => {
+            document.getElementById('batchInput').value = '';
+            document.getElementById('clearBatchBtn').classList.add('hidden');
+            currentBatchSearch = new Set();
+            updateDashboard();
+        });
+
+        document.getElementById('exportBtn').addEventListener('click', () => {
+            if (currentMapData.length === 0) return alert("No data available to export.");
+            const exportData = currentMapData.map(row => {
+                let hk80 = proj4("EPSG:4326", "EPSG:2326", [row.lon, row.lat]);
+                return {
+                    Lamppost_ID: row.lamp_post_id, Region: row.Region || '', Exchange: row.EXCHCODE || '',
+                    Unit: row.Unit || '', Street: row.street || '', District: row.district || '',
+                    Class: row.class || '', 
+                    WGS84_Lat: row.lat.toFixed(6), 
+                    WGS84_Lon: row.lon.toFixed(6),
+                    HK1980_X: hk80[0].toFixed(2), 
+                    HK1980_Y: hk80[1].toFixed(2)
+                };
+            });
+            const csv = Papa.unparse(exportData);
+            const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+            const link = document.createElement("a");
+            link.setAttribute("href", URL.createObjectURL(blob));
+            link.setAttribute("download", "HK_Lampposts_Filtered.csv");
+            link.style.visibility = 'hidden';
+            document.body.appendChild(link);
+            link.click();
+            document.body.removeChild(link);
+        });
+    </script>
+</body>
+</html>
