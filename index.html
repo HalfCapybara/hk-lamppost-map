@@ -93,10 +93,10 @@
                 </div>
             </div>
 
-            <!-- SMART BATCH SEARCH (NEW SET LOGIC) -->
+            <!-- SMART BATCH SEARCH -->
             <div>
                 <label class="block text-sm font-medium text-blue-400 mb-1">Smart Batch Search</label>
-                <textarea id="batchInput" rows="3" placeholder="Paste Lamppost IDs here (auto-detects any 5-digit code)..." 
+                <textarea id="batchInput" rows="3" placeholder="Paste Lamppost IDs here (auto-detects 5 or 6 digit codes)..." 
                           class="w-full p-2 rounded bg-gray-700 border border-gray-600 text-white placeholder-gray-400 focus:outline-none focus:border-blue-500" disabled></textarea>
                 <div class="flex gap-2 mt-2">
                     <button id="batchSearchBtn" class="flex-1 bg-blue-600 hover:bg-blue-700 text-white font-bold py-1.5 px-3 rounded text-sm disabled:opacity-50" disabled>Scan & Filter</button>
@@ -139,7 +139,7 @@
         let globalData = [];
         let currentMapData = [];
         let currentTextSearch = '';
-        let currentBatchSearch = new Set(); // Upgraded to Set for O(1) matching
+        let currentBatchSearch = new Set();
         let currentClassFilter = null;
         let currentRegionFilter = '';
         let currentExchFilter = '';
@@ -216,7 +216,7 @@
                 });
             }
 
-            // Smart Batch Lookup (using highly optimized O(1) Set)
+            // Smart Batch Lookup (Highly optimized Set matching)
             if (currentBatchSearch && currentBatchSearch.size > 0) {
                 baseData = baseData.filter(row => currentBatchSearch.has(String(row.lamp_post_id || '').trim().toLowerCase()));
             }
@@ -318,15 +318,12 @@
             }, 350); 
         });
 
-        // --- NEW O(1) SMART BATCH SET PARSING LOGIC ---
+        // --- UPDATED REGEX: Matches Letter+4/5chars OR Number+4chars ---
         document.getElementById('batchInput').addEventListener('input', (e) => {
             const input = e.target.value;
-            
-            // Match EXACTLY 5 alphanumeric characters bounded by spaces or line breaks
-            const matches = input.match(/\b[a-zA-Z0-9]{5}\b/g);
+            const matches = input.match(/\b(?:[a-zA-Z][a-zA-Z0-9]{4,5}|[0-9][a-zA-Z0-9]{4})\b/g);
             
             if (matches && matches.length > 0) {
-                // Instantly load matches into an indexed Set for hyper-fast comparison
                 currentBatchSearch = new Set(matches.map(id => id.toLowerCase()));
                 document.getElementById('clearBatchBtn').classList.remove('hidden');
             } else {
