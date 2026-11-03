@@ -30,22 +30,22 @@
         #sidebar { 
             background: #1f2937; padding: 20px; display: flex; flex-direction: column; gap: 15px; 
             overflow-y: auto; z-index: 3000; box-shadow: 2px 0 10px rgba(0,0,0,0.5); 
-            position: absolute; top: 0; left: 0; height: 100%; width: 85%; max-width: 360px;
+            position: absolute; top: 0; left: 0; height: 100%; width: 85%; max-width: 380px;
             transform: translateX(-100%); transition: transform 0.3s ease-in-out;
         }
         #sidebar.open { transform: translateX(0); }
         @media (min-width: 768px) {
-            #sidebar { position: relative; transform: translateX(0); width: 360px; max-width: 360px; }
+            #sidebar { position: relative; transform: translateX(0); width: 380px; max-width: 380px; }
         }
 
         #sidebar::-webkit-scrollbar { width: 6px; }
         #sidebar::-webkit-scrollbar-track { background: #1f2937; }
         #sidebar::-webkit-scrollbar-thumb { background: #4b5563; border-radius: 3px; }
         
-        .indicator { background: #374151; padding: 12px; border-radius: 8px; text-align: center; transition: all 0.2s; }
-        .indicator:hover { transform: translateY(-2px); box-shadow: 0 4px 6px rgba(0,0,0,0.3); cursor: pointer; }
-        .indicator-value { font-size: 1.25rem; font-weight: bold; }
-        .indicator-label { font-size: 0.7rem; color: #d1d5db; text-transform: uppercase; margin-top: 5px; font-weight: 600; line-height: 1.2; }
+        .indicator { background: #374151; padding: 10px; border-radius: 8px; text-align: center; transition: all 0.2s; }
+        .indicator.clickable:hover { transform: translateY(-2px); box-shadow: 0 4px 6px rgba(0,0,0,0.3); cursor: pointer; }
+        .indicator-value { font-size: 1.15rem; font-weight: bold; }
+        .indicator-label { font-size: 0.65rem; color: #d1d5db; text-transform: uppercase; margin-top: 4px; font-weight: 600; line-height: 1.2; }
         .leaflet-popup-content { color: #111827; } 
         
         .street-view-btn {
@@ -72,22 +72,20 @@
             
             <!-- SINGLE SEARCH -->
             <div>
-                <label class="block text-sm font-medium text-gray-400 mb-1">Search Database (Single)</label>
-                <input type="text" id="searchInput" placeholder="Type ID, Street, or District..." 
-                       class="w-full p-2.5 rounded bg-gray-700 border border-gray-600 text-white placeholder-gray-400 focus:outline-none focus:border-blue-500 text-base" disabled>
+                <input type="text" id="searchInput" placeholder="Search ID, Street, or District..." 
+                       class="w-full p-2 rounded bg-gray-700 border border-gray-600 text-white placeholder-gray-400 focus:outline-none focus:border-blue-500 text-sm" disabled>
             </div>
 
             <!-- FILTERS -->
             <div>
-                <label class="block text-sm font-medium text-gray-400 mb-1">Network Filters</label>
                 <div class="flex flex-col gap-2">
-                    <select id="regionFilter" class="w-full p-2.5 rounded bg-gray-700 border border-gray-600 text-white text-base focus:outline-none focus:border-blue-500 disabled:opacity-50" disabled>
+                    <select id="regionFilter" class="w-full p-2 rounded bg-gray-700 border border-gray-600 text-white text-sm focus:outline-none focus:border-blue-500 disabled:opacity-50" disabled>
                         <option value="">All Regions</option>
                     </select>
-                    <select id="exchFilter" class="w-full p-2.5 rounded bg-gray-700 border border-gray-600 text-white text-base focus:outline-none focus:border-blue-500 disabled:opacity-50" disabled>
+                    <select id="exchFilter" class="w-full p-2 rounded bg-gray-700 border border-gray-600 text-white text-sm focus:outline-none focus:border-blue-500 disabled:opacity-50" disabled>
                         <option value="">All Exchanges</option>
                     </select>
-                    <select id="unitFilter" class="w-full p-2.5 rounded bg-gray-700 border border-gray-600 text-white text-base focus:outline-none focus:border-blue-500 disabled:opacity-50" disabled>
+                    <select id="unitFilter" class="w-full p-2 rounded bg-gray-700 border border-gray-600 text-white text-sm focus:outline-none focus:border-blue-500 disabled:opacity-50" disabled>
                         <option value="">All Units</option>
                     </select>
                 </div>
@@ -96,17 +94,34 @@
             <!-- SMART BATCH SEARCH -->
             <div>
                 <label class="block text-sm font-medium text-blue-400 mb-1">Smart Batch Search</label>
-                <textarea id="batchInput" rows="3" placeholder="Paste Lamppost IDs here (auto-detects 5 or 6 digit codes)..." 
-                          class="w-full p-2 rounded bg-gray-700 border border-gray-600 text-white placeholder-gray-400 focus:outline-none focus:border-blue-500" disabled></textarea>
+                <textarea id="batchInput" rows="2" placeholder="Paste Lamppost IDs here (auto-detects 5 or 6 digit codes)..." 
+                          class="w-full p-2 rounded bg-gray-700 border border-gray-600 text-white placeholder-gray-400 focus:outline-none focus:border-blue-500 text-sm" disabled></textarea>
                 <div class="flex gap-2 mt-2">
-                    <button id="batchSearchBtn" class="flex-1 bg-blue-600 hover:bg-blue-700 text-white font-bold py-1.5 px-3 rounded text-sm disabled:opacity-50" disabled>Scan & Filter</button>
+                    <button id="batchSearchBtn" class="hidden flex-1 bg-blue-600 hover:bg-blue-700 text-white font-bold py-1.5 px-3 rounded text-sm disabled:opacity-50" disabled>Scan & Filter</button>
                     <button id="clearBatchBtn" class="hidden flex-1 bg-gray-600 hover:bg-gray-700 text-white font-bold py-1.5 px-3 rounded text-sm">Clear Batch</button>
                 </div>
             </div>
             
-            <div>
-                <h2 class="text-sm font-semibold text-gray-400 uppercase tracking-wider mb-1">Class Summary</h2>
-                <div class="grid grid-cols-2 gap-2 mt-2" id="indicators"></div>
+            <!-- SUMMARIES -->
+            <div class="space-y-4">
+                <!-- Class Summary -->
+                <div>
+                    <h2 class="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-1">Class Summary (Click to Filter)</h2>
+                    <div class="grid grid-cols-2 gap-2" id="classIndicators"></div>
+                </div>
+                
+                <div class="flex gap-4">
+                    <!-- Region Summary -->
+                    <div class="flex-1">
+                        <h2 class="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-1">Top Regions</h2>
+                        <div class="grid grid-cols-2 gap-2" id="regionIndicators"></div>
+                    </div>
+                    <!-- Unit Summary -->
+                    <div class="flex-1">
+                        <h2 class="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-1">Top Units</h2>
+                        <div class="grid grid-cols-2 gap-2" id="unitIndicators"></div>
+                    </div>
+                </div>
             </div>
 
             <div class="mt-auto pt-4 border-t border-gray-600">
@@ -147,9 +162,9 @@
         const markerCache = new Map();
 
         function formatClassName(cls) {
-            if (cls === 'ON_CENTRAL_DIVIDER_HIGH') return 'CENTRAL DIVIDER (HIGH)';
-            if (cls === 'ON_CENTRAL_DIVIDER_MEDIUM') return 'CENTRAL DIVIDER (MED)';
-            if (cls === 'ON_BRIDGE') return 'ON BRIDGE (天橋)';
+            if (cls === 'ON_CENTRAL_DIVIDER_HIGH') return 'DIVIDER (HI)';
+            if (cls === 'ON_CENTRAL_DIVIDER_MEDIUM') return 'DIVIDER (MED)';
+            if (cls === 'ON_BRIDGE') return 'ON BRIDGE';
             return cls;
         }
 
@@ -201,12 +216,11 @@
         function updateDashboard() {
             let baseData = globalData;
             
-            // Dropdowns
+            // Apply Filters
             if (currentRegionFilter) baseData = baseData.filter(row => row.Region === currentRegionFilter);
             if (currentExchFilter) baseData = baseData.filter(row => row.EXCHCODE === currentExchFilter);
             if (currentUnitFilter) baseData = baseData.filter(row => row.Unit === currentUnitFilter);
 
-            // Single Search String
             if (currentTextSearch) {
                 baseData = baseData.filter(row => {
                     const idStr = String(row.lamp_post_id || '').toLowerCase();
@@ -216,161 +230,5 @@
                 });
             }
 
-            // Smart Batch Lookup (Highly optimized Set matching)
             if (currentBatchSearch && currentBatchSearch.size > 0) {
-                baseData = baseData.filter(row => currentBatchSearch.has(String(row.lamp_post_id || '').trim().toLowerCase()));
-            }
-
-            const classCounts = {};
-            baseData.forEach(row => {
-                const lampClass = row.class || 'UNKNOWN';
-                classCounts[lampClass] = (classCounts[lampClass] || 0) + 1;
-            });
-            const sortedClasses = Object.entries(classCounts).sort((a, b) => b[1] - a[1]).slice(0, 4);
-
-            const indicatorsContainer = document.getElementById('indicators');
-            indicatorsContainer.innerHTML = sortedClasses.map(([cls, count]) => {
-                const isSelected = currentClassFilter === cls;
-                const isDivider = cls.includes('CENTRAL_DIVIDER');
-                const isBridge = cls === 'ON_BRIDGE';
-                const baseColor = isDivider ? 'red' : (isBridge ? 'purple' : 'blue');
-                const textClass = isDivider ? 'text-red-400' : (isBridge ? 'text-purple-400' : 'text-blue-400');
-                const borderClass = isSelected ? `border-2 border-${baseColor}-400 bg-${baseColor}-900/30` : `border border-gray-600`;
-
-                return `
-                    <div class="indicator ${borderClass}" onclick="window.toggleClassFilter('${cls}')">
-                        <div class="indicator-value ${textClass}">${count.toLocaleString()}</div>
-                        <div class="indicator-label">${formatClassName(cls)}</div>
-                    </div>
-                `;
-            }).join('');
-
-            currentMapData = baseData;
-            if (currentClassFilter) {
-                currentMapData = currentMapData.filter(row => row.class === currentClassFilter);
-            }
-
-            document.getElementById('exportCount').innerText = `(${currentMapData.length})`;
-
-            markers.clearLayers();
-            let bounds = L.latLngBounds();
-            const newMarkers = [];
-
-            currentMapData.forEach(row => {
-                let marker = markerCache.get(row._uid);
-                
-                if (!marker) {
-                    const lampClass = row.class || 'UNKNOWN';
-                    const isDivider = lampClass.includes('CENTRAL_DIVIDER');
-                    const isBridge = lampClass === 'ON_BRIDGE';
-                    const markerColor = isDivider ? '#ef4444' : (isBridge ? '#a855f7' : '#2563eb');
-                    const fillColor = isDivider ? '#f87171' : (isBridge ? '#c084fc' : '#3b82f6');
-                    const streetViewUrl = `https://www.google.com/maps/@?api=1&map_action=pano&viewpoint=${row.lat},${row.lon}`;
-
-                    let hk80 = proj4("EPSG:4326", "EPSG:2326", [row.lon, row.lat]);
-                    let hk80_x = hk80[0].toFixed(1);
-                    let hk80_y = hk80[1].toFixed(1);
-
-                    marker = L.circleMarker([row.lat, row.lon], {
-                        radius: 5, color: markerColor, fillColor: fillColor, fillOpacity: 0.9, weight: 1
-                    }).bindPopup(`
-                        <div style="font-family: sans-serif; min-width: 210px;">
-                            <strong style="font-size: 1.1rem; color: #1d4ed8;">${row.lamp_post_id}</strong><br>
-                            <strong>Region:</strong> ${row.Region || 'N/A'} | <strong>EXCH:</strong> ${row.EXCHCODE || 'N/A'}<br>
-                            <strong>Unit:</strong> ${row.Unit || 'N/A'}<br>
-                            <hr style="margin: 8px 0; border-top: 1px solid #ccc;">
-                            <strong>Street:</strong> ${row.street || 'N/A'}<br>
-                            <strong>District:</strong> ${row.district || 'N/A'}<br>
-                            <strong>Class:</strong> <span style="color:${isDivider ? 'red' : (isBridge ? 'purple' : 'blue')}; font-weight:bold;">${formatClassName(lampClass)}</span>
-                            
-                            <div style="background: #f3f4f6; padding: 6px; border-radius: 4px; font-size: 0.75rem; color: #4b5563; margin-top: 8px;">
-                                <div><strong style="color: #374151;">WGS84:</strong> ${row.lat.toFixed(5)}, ${row.lon.toFixed(5)}</div>
-                                <div style="margin-top: 2px;"><strong style="color: #374151;">HK1980:</strong> ${hk80_x}, ${hk80_y}</div>
-                            </div>
-
-                            <a href="${streetViewUrl}" target="_blank" class="street-view-btn">🗺️ Open in Street View</a>
-                        </div>
-                    `);
-                    markerCache.set(row._uid, marker);
-                }
-                newMarkers.push(marker);
-                bounds.extend([row.lat, row.lon]);
-            });
-
-            markers.addLayers(newMarkers);
-
-            if (currentMapData.length > 0 && (currentTextSearch || (currentBatchSearch && currentBatchSearch.size > 0) || currentClassFilter || currentRegionFilter || currentExchFilter || currentUnitFilter)) {
-                map.flyToBounds(bounds, { padding: [50, 50], maxZoom: 18, duration: 1.5 });
-            }
-        }
-
-        window.toggleClassFilter = function(cls) { currentClassFilter = (currentClassFilter === cls) ? null : cls; updateDashboard(); };
-        document.getElementById('regionFilter').addEventListener('change', (e) => { currentRegionFilter = e.target.value; updateDashboard(); });
-        document.getElementById('exchFilter').addEventListener('change', (e) => { currentExchFilter = e.target.value; updateDashboard(); });
-        document.getElementById('unitFilter').addEventListener('change', (e) => { currentUnitFilter = e.target.value; updateDashboard(); });
-
-        let searchTimeout;
-        document.getElementById('searchInput').addEventListener('input', (e) => {
-            clearTimeout(searchTimeout);
-            searchTimeout = setTimeout(() => {
-                currentTextSearch = e.target.value.toLowerCase().trim();
-                updateDashboard();
-            }, 350); 
-        });
-
-        // --- UPDATED REGEX: Matches Letter+4/5chars OR Number+4chars ---
-        document.getElementById('batchInput').addEventListener('input', (e) => {
-            const input = e.target.value;
-            const matches = input.match(/\b(?:[a-zA-Z][a-zA-Z0-9]{4,5}|[0-9][a-zA-Z0-9]{4})\b/g);
-            
-            if (matches && matches.length > 0) {
-                currentBatchSearch = new Set(matches.map(id => id.toLowerCase()));
-                document.getElementById('clearBatchBtn').classList.remove('hidden');
-            } else {
-                currentBatchSearch = new Set();
-                if (!input.trim()) {
-                    document.getElementById('clearBatchBtn').classList.add('hidden');
-                }
-            }
-            updateDashboard();
-        });
-
-        document.getElementById('batchSearchBtn').addEventListener('click', () => {
-            const event = new Event('input');
-            document.getElementById('batchInput').dispatchEvent(event);
-        });
-
-        document.getElementById('clearBatchBtn').addEventListener('click', () => {
-            document.getElementById('batchInput').value = '';
-            document.getElementById('clearBatchBtn').classList.add('hidden');
-            currentBatchSearch = new Set();
-            updateDashboard();
-        });
-
-        document.getElementById('exportBtn').addEventListener('click', () => {
-            if (currentMapData.length === 0) return alert("No data available to export.");
-            const exportData = currentMapData.map(row => {
-                let hk80 = proj4("EPSG:4326", "EPSG:2326", [row.lon, row.lat]);
-                return {
-                    Lamppost_ID: row.lamp_post_id, Region: row.Region || '', Exchange: row.EXCHCODE || '',
-                    Unit: row.Unit || '', Street: row.street || '', District: row.district || '',
-                    Class: row.class || '', 
-                    WGS84_Lat: row.lat.toFixed(6), 
-                    WGS84_Lon: row.lon.toFixed(6),
-                    HK1980_X: hk80[0].toFixed(2), 
-                    HK1980_Y: hk80[1].toFixed(2)
-                };
-            });
-            const csv = Papa.unparse(exportData);
-            const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
-            const link = document.createElement("a");
-            link.setAttribute("href", URL.createObjectURL(blob));
-            link.setAttribute("download", "HK_Lampposts_Filtered.csv");
-            link.style.visibility = 'hidden';
-            document.body.appendChild(link);
-            link.click();
-            document.body.removeChild(link);
-        });
-    </script>
-</body>
-</html>
+                baseData = baseData.filter(row => currentBatchSearch
