@@ -2,8 +2,8 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>HK Lamppost Dashboard</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>HK Lamppost Mobile</title>
     <!-- Tailwind CSS for styling -->
     <script src="https://cdn.tailwindcss.com"></script>
     <!-- Leaflet CSS & JS for Mapping -->
@@ -13,21 +13,47 @@
     <link rel="stylesheet" href="https://unpkg.com/leaflet.markercluster@1.4.1/dist/MarkerCluster.css" />
     <link rel="stylesheet" href="https://unpkg.com/leaflet.markercluster@1.4.1/dist/MarkerCluster.Default.css" />
     <script src="https://unpkg.com/leaflet.markercluster@1.4.1/dist/leaflet.markercluster.js"></script>
-    <!-- PapaParse for reading and exporting CSV -->
+    <!-- PapaParse for reading CSV -->
     <script src="https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.4.1/papaparse.min.js"></script>
     
     <style>
-        html, body { margin: 0; padding: 0; height: 100%; background: #111827; color: white; font-family: sans-serif; }
-        #app { display: flex; height: 100vh; width: 100vw; overflow: hidden; }
+        html, body { margin: 0; padding: 0; height: 100%; background: #111827; color: white; font-family: sans-serif; overflow: hidden; }
+        #app { display: flex; height: 100vh; width: 100vw; position: relative; }
         
-        /* Custom scrollbar for sidebar */
-        #sidebar { width: 360px; background: #1f2937; padding: 20px; display: flex; flex-direction: column; gap: 15px; overflow-y: auto; z-index: 1000; box-shadow: 2px 0 10px rgba(0,0,0,0.5); }
+        /* Map Area */
+        #map { flex-grow: 1; height: 100%; background: #000; z-index: 1; width: 100%; }
+
+        /* Mobile Hamburger Menu Button */
+        #menuToggle {
+            position: absolute; top: 15px; left: 15px; z-index: 2000;
+            background: #2563eb; color: white; border: none; padding: 10px 16px;
+            border-radius: 8px; font-weight: bold; cursor: pointer;
+            box-shadow: 0 4px 6px rgba(0,0,0,0.5); transition: background 0.2s;
+        }
+        #menuToggle:hover { background: #1d4ed8; }
+        @media (min-width: 768px) { #menuToggle { display: none; } } /* Hide on desktop */
+
+        /* Responsive Sidebar Drawer */
+        #sidebar { 
+            background: #1f2937; padding: 20px; display: flex; flex-direction: column; gap: 15px; 
+            overflow-y: auto; z-index: 3000; box-shadow: 2px 0 10px rgba(0,0,0,0.5); 
+            position: absolute; top: 0; left: 0; height: 100%; width: 85%; max-width: 360px;
+            transform: translateX(-100%); transition: transform 0.3s ease-in-out;
+        }
+        #sidebar.open { transform: translateX(0); }
+        
+        /* Keep sidebar permanently open and fixed on Desktop */
+        @media (min-width: 768px) {
+            #sidebar { position: relative; transform: translateX(0); width: 360px; max-width: 360px; }
+        }
+
+        /* Custom Scrollbar */
         #sidebar::-webkit-scrollbar { width: 6px; }
         #sidebar::-webkit-scrollbar-track { background: #1f2937; }
         #sidebar::-webkit-scrollbar-thumb { background: #4b5563; border-radius: 3px; }
         
-        #map { flex-grow: 1; height: 100%; background: #000; z-index: 1; }
-        .indicator { background: #374151; padding: 12px; border-radius: 8px; text-align: center; transition: all 0.2s ease-in-out; }
+        /* Indicators and Popups */
+        .indicator { background: #374151; padding: 12px; border-radius: 8px; text-align: center; transition: all 0.2s; }
         .indicator:hover { transform: translateY(-2px); box-shadow: 0 4px 6px rgba(0,0,0,0.3); cursor: pointer; }
         .indicator-value { font-size: 1.25rem; font-weight: bold; }
         .indicator-label { font-size: 0.7rem; color: #d1d5db; text-transform: uppercase; margin-top: 5px; font-weight: 600; line-height: 1.2; }
@@ -35,73 +61,69 @@
         
         .street-view-btn {
             display: block; margin-top: 10px; text-align: center; background-color: #2563eb;
-            color: white !important; padding: 8px; border-radius: 6px; text-decoration: none;
-            font-size: 0.85rem; font-weight: bold; transition: background-color 0.2s;
+            color: white !important; padding: 10px; border-radius: 6px; text-decoration: none;
+            font-size: 0.9rem; font-weight: bold; transition: background-color 0.2s;
         }
         .street-view-btn:hover { background-color: #1d4ed8; }
     </style>
 </head>
 <body>
     <div id="app">
+        <!-- Floating Mobile Menu Button -->
+        <button id="menuToggle">☰ Search & Filters</button>
+
+        <!-- Sidebar / Drawer -->
         <div id="sidebar">
-            <h1 class="text-xl font-bold border-b border-gray-600 pb-2">HK Lamppost Map</h1>
+            <div class="flex justify-between items-center border-b border-gray-600 pb-2">
+                <h1 class="text-xl font-bold">HK Lamppost Map</h1>
+                <!-- Close Button (Mobile Only) -->
+                <button id="closeMenuBtn" class="md:hidden text-gray-400 hover:text-white text-3xl font-bold leading-none">&times;</button>
+            </div>
             
-            <!-- Status Indicator -->
             <div id="status" class="text-sm text-yellow-400 font-semibold animate-pulse">
                 Downloading dataset... please wait.
             </div>
             
-            <!-- Text Search -->
             <div>
-                <label class="block text-sm font-medium text-gray-400 mb-1">Search Database</label>
+                <label class="block text-sm font-medium text-gray-400 mb-1">Search ID or Location</label>
                 <input type="text" id="searchInput" placeholder="Type ID, Street, or District..." 
-                       class="w-full p-2 rounded bg-gray-700 border border-gray-600 text-white placeholder-gray-400 focus:outline-none focus:border-blue-500 transition-colors" disabled>
+                       class="w-full p-2.5 rounded bg-gray-700 border border-gray-600 text-white placeholder-gray-400 focus:outline-none focus:border-blue-500 text-base" disabled>
             </div>
 
-            <!-- Network Filters -->
             <div>
                 <label class="block text-sm font-medium text-gray-400 mb-1">Network Filters</label>
                 <div class="flex flex-col gap-2">
-                    <select id="regionFilter" class="w-full p-2 rounded bg-gray-700 border border-gray-600 text-white focus:outline-none focus:border-blue-500 disabled:opacity-50" disabled>
+                    <select id="regionFilter" class="w-full p-2.5 rounded bg-gray-700 border border-gray-600 text-white text-base focus:outline-none focus:border-blue-500 disabled:opacity-50" disabled>
                         <option value="">All Regions</option>
                     </select>
-                    <select id="exchFilter" class="w-full p-2 rounded bg-gray-700 border border-gray-600 text-white focus:outline-none focus:border-blue-500 disabled:opacity-50" disabled>
+                    <select id="exchFilter" class="w-full p-2.5 rounded bg-gray-700 border border-gray-600 text-white text-base focus:outline-none focus:border-blue-500 disabled:opacity-50" disabled>
                         <option value="">All Exchanges</option>
                     </select>
-                    <select id="unitFilter" class="w-full p-2 rounded bg-gray-700 border border-gray-600 text-white focus:outline-none focus:border-blue-500 disabled:opacity-50" disabled>
+                    <select id="unitFilter" class="w-full p-2.5 rounded bg-gray-700 border border-gray-600 text-white text-base focus:outline-none focus:border-blue-500 disabled:opacity-50" disabled>
                         <option value="">All Units</option>
                     </select>
                 </div>
             </div>
 
-            <!-- Batch ID Check -->
-            <div>
+            <div class="hidden md:block">
                 <label class="block text-sm font-medium text-gray-400 mb-1">Batch ID Check (Paste List)</label>
                 <textarea id="batchInput" rows="2" placeholder="Paste multiple IDs..." 
-                          class="w-full p-2 rounded bg-gray-700 border border-gray-600 text-white placeholder-gray-400 focus:outline-none focus:border-blue-500 transition-colors" disabled></textarea>
+                          class="w-full p-2 rounded bg-gray-700 border border-gray-600 text-white placeholder-gray-400 focus:outline-none focus:border-blue-500" disabled></textarea>
                 <div class="flex gap-2 mt-2">
-                    <button id="batchSearchBtn" class="flex-1 bg-blue-600 hover:bg-blue-700 text-white font-bold py-1.5 px-3 rounded transition-colors disabled:opacity-50 text-sm" disabled>
-                        Check IDs
-                    </button>
-                    <button id="clearBatchBtn" class="hidden flex-1 bg-gray-600 hover:bg-gray-700 text-white font-bold py-1.5 px-3 rounded transition-colors text-sm">
-                        Clear Batch
-                    </button>
+                    <button id="batchSearchBtn" class="flex-1 bg-blue-600 hover:bg-blue-700 text-white font-bold py-1.5 px-3 rounded text-sm disabled:opacity-50" disabled>Check IDs</button>
+                    <button id="clearBatchBtn" class="hidden flex-1 bg-gray-600 hover:bg-gray-700 text-white font-bold py-1.5 px-3 rounded text-sm">Clear Batch</button>
                 </div>
             </div>
             
-            <!-- Indicators Grid -->
             <div>
-                <h2 class="text-sm font-semibold text-gray-400 uppercase tracking-wider mb-1">Class Summary (Click to Filter)</h2>
-                <div class="grid grid-cols-2 gap-2 mt-2" id="indicators">
-                    <!-- Indicators injected here by JS -->
-                </div>
+                <h2 class="text-sm font-semibold text-gray-400 uppercase tracking-wider mb-1">Class Summary</h2>
+                <div class="grid grid-cols-2 gap-2 mt-2" id="indicators"></div>
             </div>
 
-            <!-- Export Button -->
             <div class="mt-auto pt-4 border-t border-gray-600">
-                <button id="exportBtn" class="w-full bg-green-600 hover:bg-green-700 text-white font-bold py-2 px-4 rounded transition-colors disabled:opacity-50 flex items-center justify-center gap-2" disabled>
+                <button id="exportBtn" class="w-full bg-green-600 hover:bg-green-700 text-white font-bold py-3 px-4 rounded transition-colors disabled:opacity-50 flex items-center justify-center gap-2" disabled>
                     <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"></path></svg>
-                    Export Filtered CSV <span id="exportCount" class="text-xs font-normal opacity-80">(0)</span>
+                    Export CSV <span id="exportCount" class="text-sm font-normal opacity-80">(0)</span>
                 </button>
             </div>
         </div>
@@ -110,7 +132,12 @@
     </div>
 
     <script>
-        // 1. Initialize Map WITH CANVAS RENDERER
+        // 1. Mobile Sidebar Toggle Logic
+        const sidebar = document.getElementById('sidebar');
+        document.getElementById('menuToggle').addEventListener('click', () => sidebar.classList.add('open'));
+        document.getElementById('closeMenuBtn').addEventListener('click', () => sidebar.classList.remove('open'));
+
+        // 2. Map Setup
         const map = L.map('map', { maxZoom: 24, zoomControl: false, preferCanvas: true }).setView([22.3193, 114.1694], 11);
         L.control.zoom({ position: 'topright' }).addTo(map);
 
@@ -120,19 +147,14 @@
         const markers = L.markerClusterGroup({ chunkedLoading: true, maxClusterRadius: 60, disableClusteringAtZoom: 18 });
         map.addLayer(markers);
 
-        // Global State Variables
         let globalData = [];
-        let currentMapData = []; // Stores the currently filtered dataset
+        let currentMapData = [];
         let currentTextSearch = '';
         let currentBatchSearch = [];
         let currentClassFilter = null;
-        
-        // New Dropdown Filters State
         let currentRegionFilter = '';
         let currentExchFilter = '';
         let currentUnitFilter = '';
-        
-        // Marker Cache Memory
         const markerCache = new Map();
 
         function formatClassName(cls) {
@@ -142,7 +164,6 @@
             return cls;
         }
 
-        // Helper to populate dropdowns dynamically
         function populateDropdowns(data) {
             const regions = [...new Set(data.map(d => d.Region).filter(Boolean))].sort();
             const exchs = [...new Set(data.map(d => d.EXCHCODE).filter(Boolean))].sort();
@@ -162,9 +183,8 @@
             unitSelect.disabled = false;
         }
 
-        // 2. Fetch the newly merged CSV
         fetch('hk_lamppost_master.csv')
-            .then(res => { if (!res.ok) throw new Error(); return res.text(); })
+            .then(res => res.text())
             .then(csvText => {
                 document.getElementById('status').innerText = "Parsing data & building cache...";
                 document.getElementById('status').classList.replace('text-yellow-400', 'text-blue-400');
@@ -173,8 +193,7 @@
                     header: true, dynamicTyping: true, skipEmptyLines: true,
                     complete: function(results) {
                         globalData = results.data.filter(row => row.lat && row.lon).map((row, index) => {
-                            row._uid = index;
-                            return row;
+                            row._uid = index; return row;
                         });
                         
                         populateDropdowns(globalData);
@@ -188,22 +207,15 @@
                         updateDashboard();
                     }
                 });
-            })
-            .catch(() => {
-                document.getElementById('status').classList.replace('text-yellow-400', 'text-red-500');
-                document.getElementById('status').innerHTML = `<strong>Error:</strong> Could not load CSV. Ensure 'hk_lamppost_master.csv' is uploaded.`;
             });
 
-        // 3. Central Update Function
         function updateDashboard() {
             let baseData = globalData;
             
-            // Apply Dropdown Filters
             if (currentRegionFilter) baseData = baseData.filter(row => row.Region === currentRegionFilter);
             if (currentExchFilter) baseData = baseData.filter(row => row.EXCHCODE === currentExchFilter);
             if (currentUnitFilter) baseData = baseData.filter(row => row.Unit === currentUnitFilter);
 
-            // Apply Search Filters
             if (currentTextSearch) {
                 baseData = baseData.filter(row => {
                     const idStr = String(row.lamp_post_id || '').toLowerCase();
@@ -216,7 +228,6 @@
                 baseData = baseData.filter(row => currentBatchSearch.includes(String(row.lamp_post_id || '').toLowerCase()));
             }
 
-            // Calculate Class Counts based on filtered data
             const classCounts = {};
             baseData.forEach(row => {
                 const lampClass = row.class || 'UNKNOWN';
@@ -224,16 +235,14 @@
             });
             const sortedClasses = Object.entries(classCounts).sort((a, b) => b[1] - a[1]).slice(0, 4);
 
-            // Render Class Indicators
             const indicatorsContainer = document.getElementById('indicators');
             indicatorsContainer.innerHTML = sortedClasses.map(([cls, count]) => {
                 const isSelected = currentClassFilter === cls;
                 const isDivider = cls.includes('CENTRAL_DIVIDER');
                 const isBridge = cls === 'ON_BRIDGE';
-                
                 const baseColor = isDivider ? 'red' : (isBridge ? 'purple' : 'blue');
                 const textClass = isDivider ? 'text-red-400' : (isBridge ? 'text-purple-400' : 'text-blue-400');
-                const borderClass = isSelected ? `border-2 border-${baseColor}-400 bg-${baseColor}-900/30` : `border border-gray-600 cursor-pointer hover:border-gray-400`;
+                const borderClass = isSelected ? `border-2 border-${baseColor}-400 bg-${baseColor}-900/30` : `border border-gray-600`;
 
                 return `
                     <div class="indicator ${borderClass}" onclick="window.toggleClassFilter('${cls}')">
@@ -243,16 +252,13 @@
                 `;
             }).join('');
 
-            // Apply Class Filter for Final Map Data
             currentMapData = baseData;
             if (currentClassFilter) {
                 currentMapData = currentMapData.filter(row => row.class === currentClassFilter);
             }
 
-            // Update Export Button Count
             document.getElementById('exportCount').innerText = `(${currentMapData.length})`;
 
-            // Render Map Markers
             markers.clearLayers();
             let bounds = L.latLngBounds();
             const newMarkers = [];
@@ -264,7 +270,6 @@
                     const lampClass = row.class || 'UNKNOWN';
                     const isDivider = lampClass.includes('CENTRAL_DIVIDER');
                     const isBridge = lampClass === 'ON_BRIDGE';
-                    
                     const markerColor = isDivider ? '#ef4444' : (isBridge ? '#a855f7' : '#2563eb');
                     const fillColor = isDivider ? '#f87171' : (isBridge ? '#c084fc' : '#3b82f6');
                     const streetViewUrl = `https://www.google.com/maps/@?api=1&map_action=pano&viewpoint=${row.lat},${row.lon}`;
@@ -272,10 +277,9 @@
                     marker = L.circleMarker([row.lat, row.lon], {
                         radius: 5, color: markerColor, fillColor: fillColor, fillOpacity: 0.9, weight: 1
                     }).bindPopup(`
-                        <div style="font-family: sans-serif; min-width: 220px;">
-                            <strong>ID:</strong> ${row.lamp_post_id}<br>
-                            <strong>Region:</strong> ${row.Region || 'N/A'}<br>
-                            <strong>Exchange:</strong> ${row.EXCHCODE || 'N/A'}<br>
+                        <div style="font-family: sans-serif; min-width: 200px;">
+                            <strong style="font-size: 1.1rem; color: #1d4ed8;">${row.lamp_post_id}</strong><br>
+                            <strong>Region:</strong> ${row.Region || 'N/A'} | <strong>EXCH:</strong> ${row.EXCHCODE || 'N/A'}<br>
                             <strong>Unit:</strong> ${row.Unit || 'N/A'}<br>
                             <hr style="margin: 8px 0; border-top: 1px solid #ccc;">
                             <strong>Street:</strong> ${row.street || 'N/A'}<br>
@@ -286,7 +290,6 @@
                     `);
                     markerCache.set(row._uid, marker);
                 }
-                
                 newMarkers.push(marker);
                 bounds.extend([row.lat, row.lon]);
             });
@@ -298,13 +301,7 @@
             }
         }
 
-        // 4. Event Listeners
-        window.toggleClassFilter = function(cls) {
-            currentClassFilter = (currentClassFilter === cls) ? null : cls;
-            updateDashboard();
-        };
-
-        // Dropdown Listeners
+        window.toggleClassFilter = function(cls) { currentClassFilter = (currentClassFilter === cls) ? null : cls; updateDashboard(); };
         document.getElementById('regionFilter').addEventListener('change', (e) => { currentRegionFilter = e.target.value; updateDashboard(); });
         document.getElementById('exchFilter').addEventListener('change', (e) => { currentExchFilter = e.target.value; updateDashboard(); });
         document.getElementById('unitFilter').addEventListener('change', (e) => { currentUnitFilter = e.target.value; updateDashboard(); });
@@ -334,38 +331,19 @@
             updateDashboard();
         });
 
-        // 5. Export Functionality
         document.getElementById('exportBtn').addEventListener('click', () => {
-            if (currentMapData.length === 0) {
-                alert("No data available to export.");
-                return;
-            }
-
-            // Map data to clean objects for CSV
+            if (currentMapData.length === 0) return alert("No data available to export.");
             const exportData = currentMapData.map(row => ({
-                Lamppost_ID: row.lamp_post_id,
-                Region: row.Region || '',
-                Exchange: row.EXCHCODE || '',
-                Unit: row.Unit || '',
-                Street: row.street || '',
-                District: row.district || '',
-                Class: row.class || '',
-                Latitude: row.lat,
-                Longitude: row.lon
+                Lamppost_ID: row.lamp_post_id, Region: row.Region || '', Exchange: row.EXCHCODE || '',
+                Unit: row.Unit || '', Street: row.street || '', District: row.district || '',
+                Class: row.class || '', Latitude: row.lat, Longitude: row.lon
             }));
-
-            // Convert to CSV string using PapaParse
             const csv = Papa.unparse(exportData);
-            
-            // Create download link
             const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
             const link = document.createElement("a");
-            const url = URL.createObjectURL(blob);
-            
-            link.setAttribute("href", url);
+            link.setAttribute("href", URL.createObjectURL(blob));
             link.setAttribute("download", "HK_Lampposts_Filtered.csv");
             link.style.visibility = 'hidden';
-            
             document.body.appendChild(link);
             link.click();
             document.body.removeChild(link);
