@@ -26,12 +26,12 @@
     <link rel="stylesheet" href="https://unpkg.com/leaflet.markercluster@1.4.1/dist/MarkerCluster.Default.css" />
     <script src="https://unpkg.com/leaflet.markercluster@1.4.1/dist/leaflet.markercluster.js"></script>
     
-    <!-- Utilities -->
+    <!-- Utilities & OCR -->
     <script src="https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.4.1/papaparse.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/proj4js/2.9.0/proj4.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/tesseract.min.js"></script>
     
     <style>
-        /* Scoped Map & App Styles */
         html, body { margin: 0; padding: 0; height: 100%; font-family: sans-serif; overflow: hidden; }
         
         #menuToggle {
@@ -146,22 +146,35 @@
         <div id="map" class="flex-1 bg-black z-[1]"></div>
     </div>
 
-    <!-- VIEW 2: CHAT PARSER -->
+    <!-- VIEW 2: CHAT PARSER WITH OCR -->
     <div id="viewParser" class="flex-1 w-full h-full overflow-y-auto bg-slate-50 text-slate-800 hidden relative">
         <div class="max-w-5xl mx-auto px-4 py-8 pb-20">
             <header class="mb-8 text-center">
                 <h1 class="text-3xl font-bold tracking-tight text-slate-900 mb-2">Chat Lamppost Parser</h1>
-                <p class="text-slate-600 max-w-xl mx-auto">Extract lamppost numbers from messy chat logs and instantly send them to the Map Dashboard for visualization.</p>
+                <p class="text-slate-600 max-w-xl mx-auto">Upload a WhatsApp screenshot or paste messy chat logs to extract lampposts and send them to the Map.</p>
             </header>
 
             <div class="bg-white shadow-lg rounded-2xl border border-slate-200 overflow-hidden mb-8">
                 <div class="p-6 sm:p-8 space-y-6">
                     <div>
                         <div class="flex justify-between items-center mb-2">
-                            <label for="chatInput" class="block text-sm font-semibold text-slate-700">Paste Chat Text Here</label>
-                            <button id="clearBtn" class="text-xs text-rose-600 hover:text-rose-700 font-medium transition-colors">Clear text</button>
+                            <label for="chatInput" class="block text-sm font-semibold text-slate-700">Paste Text OR Upload Image</label>
+                            <div class="flex gap-2">
+                                <!-- Image Upload Trigger -->
+                                <input type="file" id="imageUpload" accept="image/*" class="hidden">
+                                <button id="uploadImageBtn" class="text-xs bg-brand-100 hover:bg-brand-200 text-brand-700 font-bold px-3 py-1.5 rounded-lg transition-colors flex items-center gap-1 shadow-sm">
+                                    📷 Extract from Image
+                                </button>
+                                <button id="clearBtn" class="text-xs text-rose-600 hover:text-rose-700 font-medium transition-colors px-2">Clear</button>
+                            </div>
                         </div>
-                        <textarea id="chatInput" rows="6" placeholder="e.g., 'LP1234A 完工, lp5678B LEAD IN, LP9999 已放'" class="w-full px-4 py-3 rounded-xl border border-slate-300 focus:ring-2 focus:ring-brand-500 focus:border-brand-500 outline-none transition-all text-sm font-mono placeholder:font-sans"></textarea>
+                        
+                        <!-- OCR Loading Indicator -->
+                        <div id="ocrProgress" class="hidden text-xs text-brand-600 font-bold mb-2 animate-pulse bg-brand-50 p-2 rounded border border-brand-200 text-center">
+                            Scanning image for text... Please wait (this can take 5-10 seconds).
+                        </div>
+                        
+                        <textarea id="chatInput" rows="6" placeholder="e.g., 'LP1234A 完工, lp5678B LEAD IN'..." class="w-full px-4 py-3 rounded-xl border border-slate-300 focus:ring-2 focus:ring-brand-500 focus:border-brand-500 outline-none transition-all text-sm font-mono placeholder:font-sans"></textarea>
                     </div>
 
                     <div class="flex flex-wrap items-center justify-between gap-4 pt-2 border-t border-slate-100">
@@ -173,7 +186,7 @@
                             </label>
                             <label class="inline-flex items-center text-sm cursor-pointer select-none">
                                 <input type="checkbox" name="statusFilter" value="欠Lead-in" checked class="rounded border-slate-300 text-brand-600 focus:ring-brand-500 w-4 h-4 mr-1.5">
-                                <span class="px-2 py-0.5 rounded-full bg-amber-100 text-amber-800 text-xs font-semibold">欠Lead-in</span>
+                                <span class="px-2 py-0.5 rounded-full bg-amber-100 text-amber-800 text-xs font-semibold">欠/未有 Lead-in</span>
                             </label>
                             <label class="inline-flex items-center text-sm cursor-pointer select-none">
                                 <input type="checkbox" name="statusFilter" value="已放" checked class="rounded border-slate-300 text-brand-600 focus:ring-brand-500 w-4 h-4 mr-1.5">
@@ -184,7 +197,6 @@
                                 <span class="px-2 py-0.5 rounded-full bg-slate-100 text-slate-700 text-xs font-semibold">No Status</span>
                             </label>
                         </div>
-                        <button id="sampleBtn" class="text-xs bg-slate-100 hover:bg-slate-200 text-slate-700 font-medium px-3 py-1.5 rounded-lg transition-colors">Load Sample</button>
                     </div>
                 </div>
             </div>
@@ -200,7 +212,6 @@
                         <button id="copyBtn" class="bg-slate-800 hover:bg-slate-900 text-white font-medium px-3 py-2 rounded-xl text-sm transition-all shadow-sm disabled:opacity-50">
                             Copy Text
                         </button>
-                        <!-- NEW SEND TO MAP BUTTON -->
                         <button id="sendToMapBtn" class="bg-brand-600 hover:bg-brand-700 text-white font-medium px-4 py-2 rounded-xl text-sm transition-all shadow-sm flex items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed">
                             <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M14 5l7 7m0 0l-7 7m7-7H3"></path></svg>
                             Send to Map
@@ -239,7 +250,6 @@
         </div>
     </div>
 
-    <!-- COMBINED SCRIPT -->
     <script>
         // ==========================================
         // 0. TAB SWITCHING LOGIC
@@ -250,66 +260,36 @@
         const viewParser = document.getElementById('viewParser');
 
         tabBtnMap.addEventListener('click', () => {
-            viewMap.classList.remove('hidden');
-            viewParser.classList.add('hidden');
-            
-            // UI Styling update
-            tabBtnMap.classList.replace('text-gray-400', 'text-blue-400');
-            tabBtnMap.classList.replace('border-transparent', 'border-blue-500');
-            tabBtnMap.classList.replace('hover:bg-slate-800', 'bg-slate-800');
-            tabBtnMap.classList.remove('hover:text-white');
-            
-            tabBtnParser.classList.replace('text-blue-400', 'text-gray-400');
-            tabBtnParser.classList.replace('border-blue-500', 'border-transparent');
-            tabBtnParser.classList.replace('bg-slate-800', 'hover:bg-slate-800');
-            tabBtnParser.classList.add('hover:text-white');
-            
-            // Fix map rendering bug when un-hiding Leaflet
+            viewMap.classList.remove('hidden'); viewParser.classList.add('hidden');
+            tabBtnMap.classList.replace('text-gray-400', 'text-blue-400'); tabBtnMap.classList.replace('border-transparent', 'border-blue-500'); tabBtnMap.classList.replace('hover:bg-slate-800', 'bg-slate-800'); tabBtnMap.classList.remove('hover:text-white');
+            tabBtnParser.classList.replace('text-blue-400', 'text-gray-400'); tabBtnParser.classList.replace('border-blue-500', 'border-transparent'); tabBtnParser.classList.replace('bg-slate-800', 'hover:bg-slate-800'); tabBtnParser.classList.add('hover:text-white');
             setTimeout(() => { map.invalidateSize(); }, 100);
         });
 
         tabBtnParser.addEventListener('click', () => {
-            viewMap.classList.add('hidden');
-            viewParser.classList.remove('hidden');
-            
-            // UI Styling update
-            tabBtnParser.classList.replace('text-gray-400', 'text-blue-400');
-            tabBtnParser.classList.replace('border-transparent', 'border-blue-500');
-            tabBtnParser.classList.replace('hover:bg-slate-800', 'bg-slate-800');
-            tabBtnParser.classList.remove('hover:text-white');
-            
-            tabBtnMap.classList.replace('text-blue-400', 'text-gray-400');
-            tabBtnMap.classList.replace('border-blue-500', 'border-transparent');
-            tabBtnMap.classList.replace('bg-slate-800', 'hover:bg-slate-800');
-            tabBtnMap.classList.add('hover:text-white');
+            viewMap.classList.add('hidden'); viewParser.classList.remove('hidden');
+            tabBtnParser.classList.replace('text-gray-400', 'text-blue-400'); tabBtnParser.classList.replace('border-transparent', 'border-blue-500'); tabBtnParser.classList.replace('hover:bg-slate-800', 'bg-slate-800'); tabBtnParser.classList.remove('hover:text-white');
+            tabBtnMap.classList.replace('text-blue-400', 'text-gray-400'); tabBtnMap.classList.replace('border-blue-500', 'border-transparent'); tabBtnMap.classList.replace('bg-slate-800', 'hover:bg-slate-800'); tabBtnMap.classList.add('hover:text-white');
         });
 
         // ==========================================
         // 1. MAP DASHBOARD LOGIC
         // ==========================================
         proj4.defs("EPSG:2326","+proj=tmerc +lat_0=22.3121333333333 +lon_0=114.178555555556 +k=1 +x_0=836694.05 +y_0=819069.8 +ellps=intl +towgs84=-162.619,-276.959,-161.764,0.067753,-2.243649,-1.158828,-1.094246 +units=m +no_defs");
-
         const sidebar = document.getElementById('sidebar');
         document.getElementById('menuToggle').addEventListener('click', () => sidebar.classList.add('open'));
         document.getElementById('closeMenuBtn').addEventListener('click', () => sidebar.classList.remove('open'));
 
         const map = L.map('map', { maxZoom: 24, zoomControl: false, preferCanvas: true }).setView([22.3193, 114.1694], 11);
         L.control.zoom({ position: 'topright' }).addTo(map);
-
         L.tileLayer('https://mapapi.geodata.gov.hk/gs/api/v1.0.0/xyz/basemap/wgs84/{z}/{x}/{y}.png', { maxNativeZoom: 19, maxZoom: 24 }).addTo(map);
         L.tileLayer('https://mapapi.geodata.gov.hk/gs/api/v1.0.0/xyz/label/hk/tc/wgs84/{z}/{x}/{y}.png', { maxNativeZoom: 19, maxZoom: 24 }).addTo(map);
 
         const markers = L.markerClusterGroup({ chunkedLoading: true, maxClusterRadius: 60, disableClusteringAtZoom: 18 });
         map.addLayer(markers);
 
-        let globalData = [];
-        let currentMapData = [];
-        let currentTextSearch = '';
-        let currentBatchSearch = new Set();
-        let currentClassFilter = null;
-        let currentRegionFilter = '';
-        let currentExchFilter = '';
-        let currentUnitFilter = '';
+        let globalData = []; let currentMapData = []; let currentTextSearch = ''; let currentBatchSearch = new Set();
+        let currentClassFilter = null; let currentRegionFilter = ''; let currentExchFilter = ''; let currentUnitFilter = '';
         const markerCache = new Map();
 
         function formatClassName(cls) {
@@ -319,35 +299,20 @@
             return cls;
         }
 
-        function populateDropdowns(data) {
-            const regions = [...new Set(data.map(d => d.Region).filter(Boolean))].sort();
-            const exchs = [...new Set(data.map(d => d.EXCHCODE).filter(Boolean))].sort();
-            const units = [...new Set(data.map(d => d.Unit).filter(Boolean))].sort();
-
-            const regionSelect = document.getElementById('regionFilter');
-            regions.forEach(r => regionSelect.add(new Option(r, r)));
-
-            const exchSelect = document.getElementById('exchFilter');
-            exchs.forEach(e => exchSelect.add(new Option(e, e)));
-
-            const unitSelect = document.getElementById('unitFilter');
-            units.forEach(u => unitSelect.add(new Option(u, u)));
-
-            regionSelect.disabled = false; exchSelect.disabled = false; unitSelect.disabled = false;
-        }
-
         fetch('hk_lamppost_master.csv').then(res => res.text()).then(csvText => {
             document.getElementById('status').innerText = "Building cache...";
-            document.getElementById('status').classList.replace('text-yellow-400', 'text-blue-400');
             Papa.parse(csvText, {
                 header: true, dynamicTyping: true, skipEmptyLines: true,
                 complete: function(results) {
                     globalData = results.data.filter(row => row.lat && row.lon).map((row, i) => { row._uid = i; return row; });
-                    populateDropdowns(globalData);
+                    const regions = [...new Set(globalData.map(d => d.Region).filter(Boolean))].sort();
+                    const exchs = [...new Set(globalData.map(d => d.EXCHCODE).filter(Boolean))].sort();
+                    const units = [...new Set(globalData.map(d => d.Unit).filter(Boolean))].sort();
+                    regions.forEach(r => document.getElementById('regionFilter').add(new Option(r, r)));
+                    exchs.forEach(e => document.getElementById('exchFilter').add(new Option(e, e)));
+                    units.forEach(u => document.getElementById('unitFilter').add(new Option(u, u)));
+                    ['regionFilter', 'exchFilter', 'unitFilter', 'searchInput', 'batchInput', 'exportBtn'].forEach(id => document.getElementById(id).disabled = false);
                     document.getElementById('status').style.display = 'none';
-                    document.getElementById('searchInput').disabled = false;
-                    document.getElementById('batchInput').disabled = false;
-                    document.getElementById('exportBtn').disabled = false;
                     updateDashboard();
                 }
             });
@@ -355,27 +320,14 @@
 
         function updateDashboard() {
             let baseData = globalData;
-            
             if (currentRegionFilter) baseData = baseData.filter(row => row.Region === currentRegionFilter);
             if (currentExchFilter) baseData = baseData.filter(row => row.EXCHCODE === currentExchFilter);
             if (currentUnitFilter) baseData = baseData.filter(row => row.Unit === currentUnitFilter);
+            if (currentTextSearch) baseData = baseData.filter(row => String(row.lamp_post_id || '').toLowerCase().includes(currentTextSearch) || String(row.street || '').toLowerCase().includes(currentTextSearch));
+            if (currentBatchSearch && currentBatchSearch.size > 0) baseData = baseData.filter(row => currentBatchSearch.has(String(row.lamp_post_id || '').trim().toLowerCase()));
 
-            if (currentTextSearch) {
-                baseData = baseData.filter(row => {
-                    const idStr = String(row.lamp_post_id || '').toLowerCase();
-                    return idStr.includes(currentTextSearch) || String(row.street || '').toLowerCase().includes(currentTextSearch);
-                });
-            }
-
-            if (currentBatchSearch && currentBatchSearch.size > 0) {
-                baseData = baseData.filter(row => currentBatchSearch.has(String(row.lamp_post_id || '').trim().toLowerCase()));
-            }
-
-            const classCounts = {};
-            baseData.forEach(row => { classCounts[row.class || 'UNKNOWN'] = (classCounts[row.class || 'UNKNOWN'] || 0) + 1; });
-            const sortedClasses = Object.entries(classCounts).sort((a, b) => b[1] - a[1]).slice(0, 4);
-
-            document.getElementById('classIndicators').innerHTML = sortedClasses.map(([cls, count]) => {
+            const classCounts = {}; baseData.forEach(row => { classCounts[row.class || 'UNKNOWN'] = (classCounts[row.class || 'UNKNOWN'] || 0) + 1; });
+            document.getElementById('classIndicators').innerHTML = Object.entries(classCounts).sort((a, b) => b[1] - a[1]).slice(0, 4).map(([cls, count]) => {
                 const isSelected = currentClassFilter === cls;
                 const baseColor = cls.includes('DIVIDER') ? 'red' : (cls === 'ON_BRIDGE' ? 'purple' : 'blue');
                 const borderClass = isSelected ? `border-2 border-${baseColor}-400 bg-${baseColor}-900/30 bg-slate-800` : `border border-gray-700 bg-gray-800`;
@@ -387,35 +339,22 @@
 
             currentMapData = currentClassFilter ? baseData.filter(row => row.class === currentClassFilter) : baseData;
 
-            const regionCounts = {};
-            currentMapData.forEach(row => { regionCounts[row.Region || 'N/A'] = (regionCounts[row.Region || 'N/A'] || 0) + 1; });
-            document.getElementById('regionIndicators').innerHTML = Object.entries(regionCounts).sort((a, b) => b[1] - a[1]).slice(0, 4).map(([reg, count]) => `
-                <div class="indicator border border-gray-700 bg-gray-800"><div class="indicator-value text-green-400">${count.toLocaleString()}</div><div class="indicator-label">${reg}</div></div>
-            `).join('');
-
-            const unitCounts = {};
-            currentMapData.forEach(row => { unitCounts[row.Unit || 'N/A'] = (unitCounts[row.Unit || 'N/A'] || 0) + 1; });
-            document.getElementById('unitIndicators').innerHTML = Object.entries(unitCounts).sort((a, b) => b[1] - a[1]).slice(0, 4).map(([unit, count]) => `
-                <div class="indicator border border-gray-700 bg-gray-800"><div class="indicator-value text-yellow-400">${count.toLocaleString()}</div><div class="indicator-label">${unit}</div></div>
-            `).join('');
+            const regionCounts = {}; currentMapData.forEach(row => { regionCounts[row.Region || 'N/A'] = (regionCounts[row.Region || 'N/A'] || 0) + 1; });
+            document.getElementById('regionIndicators').innerHTML = Object.entries(regionCounts).sort((a, b) => b[1] - a[1]).slice(0, 4).map(([reg, count]) => `<div class="indicator border border-gray-700 bg-gray-800"><div class="indicator-value text-green-400">${count.toLocaleString()}</div><div class="indicator-label">${reg}</div></div>`).join('');
+            
+            const unitCounts = {}; currentMapData.forEach(row => { unitCounts[row.Unit || 'N/A'] = (unitCounts[row.Unit || 'N/A'] || 0) + 1; });
+            document.getElementById('unitIndicators').innerHTML = Object.entries(unitCounts).sort((a, b) => b[1] - a[1]).slice(0, 4).map(([unit, count]) => `<div class="indicator border border-gray-700 bg-gray-800"><div class="indicator-value text-yellow-400">${count.toLocaleString()}</div><div class="indicator-label">${unit}</div></div>`).join('');
 
             document.getElementById('exportCount').innerText = `(${currentMapData.length})`;
-
-            markers.clearLayers();
-            let bounds = L.latLngBounds();
-            const newMarkers = [];
+            markers.clearLayers(); let bounds = L.latLngBounds(); const newMarkers = [];
 
             currentMapData.forEach(row => {
                 let marker = markerCache.get(row._uid);
                 if (!marker) {
                     const lampClass = row.class || 'UNKNOWN';
-                    const isDivider = lampClass.includes('CENTRAL_DIVIDER');
-                    const isBridge = lampClass === 'ON_BRIDGE';
-                    const markerColor = isDivider ? '#ef4444' : (isBridge ? '#a855f7' : '#2563eb');
-                    const fillColor = isDivider ? '#f87171' : (isBridge ? '#c084fc' : '#3b82f6');
-                    
+                    const markerColor = lampClass.includes('DIVIDER') ? '#ef4444' : (lampClass === 'ON_BRIDGE' ? '#a855f7' : '#2563eb');
+                    const fillColor = lampClass.includes('DIVIDER') ? '#f87171' : (lampClass === 'ON_BRIDGE' ? '#c084fc' : '#3b82f6');
                     let hk80 = proj4("EPSG:4326", "EPSG:2326", [row.lon, row.lat]);
-                    
                     marker = L.circleMarker([row.lat, row.lon], { radius: 5, color: markerColor, fillColor: fillColor, fillOpacity: 0.9, weight: 1 })
                     .bindPopup(`
                         <div style="font-family: sans-serif; min-width: 210px; color:#111827;">
@@ -423,7 +362,7 @@
                             <strong>Region:</strong> ${row.Region || 'N/A'} | <strong>EXCH:</strong> ${row.EXCHCODE || 'N/A'}<br>
                             <strong>Unit:</strong> ${row.Unit || 'N/A'}<br><hr style="margin: 8px 0; border-top: 1px solid #ccc;">
                             <strong>Street:</strong> ${row.street || 'N/A'}<br>
-                            <strong>Class:</strong> <span style="color:${isDivider ? 'red' : (isBridge ? 'purple' : 'blue')}; font-weight:bold;">${formatClassName(lampClass)}</span>
+                            <strong>Class:</strong> <span style="color:${markerColor}; font-weight:bold;">${formatClassName(lampClass)}</span>
                             <div style="background: #f3f4f6; padding: 6px; border-radius: 4px; font-size: 0.75rem; color: #4b5563; margin-top: 8px;">
                                 <div><strong style="color: #374151;">WGS84:</strong> ${row.lat.toFixed(5)}, ${row.lon.toFixed(5)}</div>
                                 <div style="margin-top: 2px;"><strong style="color: #374151;">HK1980:</strong> ${hk80[0].toFixed(1)}, ${hk80[1].toFixed(1)}</div>
@@ -433,8 +372,7 @@
                     `);
                     markerCache.set(row._uid, marker);
                 }
-                newMarkers.push(marker);
-                bounds.extend([row.lat, row.lon]);
+                newMarkers.push(marker); bounds.extend([row.lat, row.lon]);
             });
             markers.addLayers(newMarkers);
             if (currentMapData.length > 0 && (currentTextSearch || (currentBatchSearch && currentBatchSearch.size > 0) || currentClassFilter || currentRegionFilter || currentExchFilter || currentUnitFilter)) {
@@ -465,34 +403,21 @@
             updateDashboard();
         });
 
-        document.getElementById('clearBatchBtn').addEventListener('click', () => {
-            document.getElementById('batchInput').value = '';
-            document.getElementById('clearBatchBtn').classList.add('hidden');
-            currentBatchSearch = new Set();
-            updateDashboard();
-        });
+        document.getElementById('clearBatchBtn').addEventListener('click', () => { document.getElementById('batchInput').value = ''; document.getElementById('clearBatchBtn').classList.add('hidden'); currentBatchSearch = new Set(); updateDashboard(); });
 
         document.getElementById('exportBtn').addEventListener('click', () => {
             if (currentMapData.length === 0) return alert("No data available to export.");
             const exportData = currentMapData.map(row => {
                 let hk80 = proj4("EPSG:4326", "EPSG:2326", [row.lon, row.lat]);
-                return {
-                    Lamppost_ID: row.lamp_post_id, Region: row.Region || '', Exchange: row.EXCHCODE || '', Unit: row.Unit || '', 
-                    Street: row.street || '', Class: row.class || '', 
-                    WGS84_Lat: row.lat.toFixed(6), WGS84_Lon: row.lon.toFixed(6), HK1980_X: hk80[0].toFixed(2), HK1980_Y: hk80[1].toFixed(2)
-                };
+                return { Lamppost_ID: row.lamp_post_id, Region: row.Region || '', Exchange: row.EXCHCODE || '', Unit: row.Unit || '', Street: row.street || '', Class: row.class || '', WGS84_Lat: row.lat.toFixed(6), WGS84_Lon: row.lon.toFixed(6), HK1980_X: hk80[0].toFixed(2), HK1980_Y: hk80[1].toFixed(2) };
             });
-            const blob = new Blob([Papa.unparse(exportData)], { type: 'text/csv;charset=utf-8;' });
             const link = document.createElement("a");
-            link.setAttribute("href", URL.createObjectURL(blob));
-            link.setAttribute("download", "HK_Lampposts_Filtered.csv");
-            document.body.appendChild(link);
-            link.click();
-            document.body.removeChild(link);
+            link.setAttribute("href", URL.createObjectURL(new Blob([Papa.unparse(exportData)], { type: 'text/csv;charset=utf-8;' })));
+            link.setAttribute("download", "HK_Lampposts_Filtered.csv"); document.body.appendChild(link); link.click(); document.body.removeChild(link);
         });
 
         // ==========================================
-        // 2. CHAT PARSER LOGIC
+        // 2. CHAT PARSER LOGIC WITH OCR
         // ==========================================
         const chatInput = document.getElementById('chatInput');
         const outputComma = document.getElementById('outputComma');
@@ -503,17 +428,44 @@
         const statusCheckboxes = document.querySelectorAll('input[name="statusFilter"]');
         const toast = document.getElementById('toast');
         const toastText = document.getElementById('toastText');
+        
+        // OCR Elements
+        const imageUpload = document.getElementById('imageUpload');
+        const uploadImageBtn = document.getElementById('uploadImageBtn');
+        const ocrProgress = document.getElementById('ocrProgress');
 
-        const sampleText = `User A: Please check these:
-LP1234A 完工
-lp5678B LEAD IN
-LP 9999 已放
-And 7777D is finished.`;
-
-        document.getElementById('sampleBtn').addEventListener('click', () => { chatInput.value = sampleText; parseChat(); });
         document.getElementById('clearBtn').addEventListener('click', () => { chatInput.value = ''; parseChat(); });
         chatInput.addEventListener('input', parseChat);
         statusCheckboxes.forEach(cb => cb.addEventListener('change', parseChat));
+
+        // Tesseract OCR Integration
+        uploadImageBtn.addEventListener('click', () => imageUpload.click());
+        imageUpload.addEventListener('change', (e) => {
+            const file = e.target.files[0];
+            if (!file) return;
+
+            ocrProgress.classList.remove('hidden');
+            chatInput.disabled = true; uploadImageBtn.disabled = true;
+
+            Tesseract.recognize(
+                file,
+                'eng+chi_tra', // Load both English (for IDs) and Traditional Chinese (for status)
+                { logger: m => console.log(m) }
+            ).then(({ data: { text } }) => {
+                chatInput.value = text;
+                parseChat();
+                ocrProgress.classList.add('hidden');
+                chatInput.disabled = false; uploadImageBtn.disabled = false; imageUpload.value = ''; 
+            }).catch(err => {
+                console.error(err);
+                ocrProgress.textContent = "Error scanning image. Please try again.";
+                setTimeout(() => {
+                    ocrProgress.classList.add('hidden');
+                    ocrProgress.textContent = "Scanning image for text... Please wait (this can take 5-10 seconds).";
+                    chatInput.disabled = false; uploadImageBtn.disabled = false; imageUpload.value = '';
+                }, 3000);
+            });
+        });
 
         function parseChat() {
             const text = chatInput.value;
@@ -532,14 +484,13 @@ And 7777D is finished.`;
                 let foundStatus = "None";
                 const upperLine = line.toUpperCase();
                 if (line.includes("完工")) foundStatus = "完工";
-                else if (upperLine.includes("欠LEAD-IN") || upperLine.includes("LEAD-IN") || upperLine.includes("LEAD IN")) foundStatus = "欠Lead-in";
+                else if (upperLine.includes("未有 LEAD") || upperLine.includes("欠LEAD") || upperLine.includes("LEAD-IN") || upperLine.includes("LEAD IN")) foundStatus = "欠Lead-in";
                 else if (line.includes("已放")) foundStatus = "已放";
 
                 const tokens = line.split(/[\s,,\;；]+/);
                 tokens.forEach(token => {
                     if (/\d/.test(token)) {
                         let cleaned = token.replace(/^lp\.?/i, '');
-                        // Optional: Ensure it meets the 5/6 digit criteria before adding it to table
                         if (cleaned.match(/\b(?:[a-zA-Z][a-zA-Z0-9]{4,5}|[0-9][a-zA-Z0-9]{4})\b/)) {
                             parsedItems.push({ original: token, cleaned: cleaned, status: foundStatus });
                         }
@@ -569,7 +520,7 @@ And 7777D is finished.`;
 
             resultTableBody.innerHTML = filteredItems.map(item => {
                 let statusBadge = item.status === '完工' ? '<span class="px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-800 text-xs font-semibold">完工</span>' :
-                                  item.status === '欠Lead-in' ? '<span class="px-2 py-0.5 rounded-full bg-amber-100 text-amber-800 text-xs font-semibold">欠Lead-in</span>' :
+                                  item.status === '欠Lead-in' ? '<span class="px-2 py-0.5 rounded-full bg-amber-100 text-amber-800 text-xs font-semibold">欠/未有 Lead-in</span>' :
                                   item.status === '已放' ? '<span class="px-2 py-0.5 rounded-full bg-blue-100 text-blue-800 text-xs font-semibold">已放</span>' :
                                   '<span class="px-2 py-0.5 rounded-full bg-slate-100 text-slate-600 text-xs font-medium">None</span>';
                 return `<tr class="hover:bg-slate-50 transition-colors">
@@ -585,17 +536,10 @@ And 7777D is finished.`;
             navigator.clipboard.writeText(textToCopy).then(() => showToast('Copied to clipboard!')).catch(err => showToast('Failed to copy', true));
         });
 
-        // MAGIC BRIDGE BUTTON: Send parsed IDs directly to the Map Dashboard
         sendToMapBtn.addEventListener('click', () => {
             const textToCopy = outputComma.textContent;
-            
-            // Switch to Map Tab
             tabBtnMap.click();
-            
-            // Ensure Sidebar is open on Mobile
             document.getElementById('sidebar').classList.add('open');
-            
-            // Inject to Smart Batch Search and Trigger Update
             const mapBatchInput = document.getElementById('batchInput');
             mapBatchInput.value = textToCopy;
             mapBatchInput.dispatchEvent(new Event('input'));
